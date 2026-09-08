@@ -1,0 +1,58 @@
+/* elementary-theme.css
+   Applied only when <body class="elementary-mode"> is set (see app.js).
+   Scoped entirely under .elementary-mode so it never leaks into the
+   secondary/default theme. Per the roadmap: "one backend, one database --
+   branching only in UI", implemented here as a CSS-mode toggle rather than
+   a separate page tree, to avoid duplicating all the assignment/exam logic
+   across two codebases. If real divergent interaction models (canvas
+   drawing, drag-drop, audio narration) get built later, a genuine folder
+   split may become worth the duplication -- not needed yet.
+*/
+
+.elementary-mode {
+    --primary: #ff8a3d;
+    --primary-soft: #fff1e6;
+    --radius: 22px;
+    font-size: 17px;
+}
+
+.elementary-mode .nav button {
+    padding: 16px 18px;
+    font-size: 16px;
+    border-radius: 16px;
+}
+
+.elementary-mode .nav-icon {
+    font-size: 22px;
+}
+
+.elementary-mode .primary-btn,
+.elementary-mode .secondary-btn {
+    padding: 14px 22px;
+    font-size: 16px;
+    border-radius: 14px;
+    font-weight: 700;
+}
+
+.elementary-mode .stat-card {
+    border-radius: 20px;
+    padding: 20px;
+}
+
+.elementary-mode .stat-value {
+    font-size: 28px;
+}
+
+.elementary-mode .page-title {
+    font-size: 24px;
+}
+
+.elementary-mode table th,
+.elementary-mode table td {
+    padding: 14px 12px;
+    font-size: 15px;
+}
+
+.elementary-mode .logo-icon {
+    background: var(--primary);
+}

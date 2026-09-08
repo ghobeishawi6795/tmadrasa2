@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head><meta charset="UTF-8"><title>مدرسه</title></head>
+<body>
+<script src="assets/js/api.js"></script>
+<script>
+    const session = getSession();
+    if (!session || !session.token) {
+        window.location.href = "/login.html";
+    } else {
+        const known = ["admin", "teacher", "student", "parent"];
+        const role = (session.roles || []).find(r => known.includes(r)) || "student";
+        window.location.href = `/${role}/index.html`;
+    }
+</script>
+</body>
+</html>

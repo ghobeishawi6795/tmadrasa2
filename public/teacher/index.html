@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>پنل معلم | مدرسه</title>
+<link rel="stylesheet" href="../assets/css/core.css">
+<link rel="stylesheet" href="../assets/css/layout.css">
+<link rel="stylesheet" href="../assets/css/components.css">
+<link rel="stylesheet" href="../assets/css/responsive.css">
+</head>
+<body>
+
+<div class="app">
+
+<aside class="sidebar" id="sidebar">
+    <div class="logo">
+        <div class="logo-icon">م</div>
+        <div><strong>مدرسه</strong><span>School Platform</span></div>
+    </div>
+
+    <div class="role-box">
+        <div class="role-label">محیط فعلی</div>
+        <div class="role-name" id="roleName">معلم</div>
+    </div>
+
+    <nav class="nav" id="nav"></nav>
+
+    <div class="sidebar-bottom">
+        <button class="nav button" onclick="logout()">🚪 خروج</button>
+    </div>
+</aside>
+
+<main class="main">
+    <header class="topbar">
+        <div class="top-left">
+            <button class="mobile-menu" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+        </div>
+        <div class="top-right">
+            <div class="profile">
+                <div class="avatar" id="avatar">م</div>
+                <div>
+                    <div class="profile-name" id="profileName">—</div>
+                    <div class="profile-role" id="profileRole">—</div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <section class="content" id="content"></section>
+</main>
+
+</div>
+
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+    <div class="modal" id="modalBox">
+        <div class="modal-head">
+            <div class="modal-title" id="modalTitle">عنوان</div>
+            <button class="close" onclick="closeModal()">×</button>
+        </div>
+        <div id="modalContent"></div>
+    </div>
+</div>
+
+<script src="../assets/js/api.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/navigation.js"></script>
+<script src="../assets/js/modal.js"></script>
+
+<script>
+
+/* =========================================================
+   NAV CONFIG
+   `available:false` = real product feature with no backend API yet.
+   Shown-but-disabled so nothing is hidden.
+========================================================= */
+
+const NAV_ITEMS = [
+    { key: "dashboard",   icon: "🏠", label: "داشبورد" },
+    { key: "classes",     icon: "🏫", label: "کلاس‌ها" },
+    { key: "assignments", icon: "📚", label: "تکالیف" },
+    { key: "exams",       icon: "📝", label: "آزمون‌ها" },
+    { key: "questions",   icon: "🗂️", label: "بانک سؤال" },
+    { key: "grading",     icon: "✅", label: "تصحیح دستی" },
+    { key: "attendance",  icon: "📋", label: "حضور و غیاب" },
+    { key: "grades",      icon: "🎯", label: "نمرات" },
+    { key: "messages",    icon: "💬", label: "پیام‌ها" },
+    { key: "reports",     icon: "📊", label: "گزارش عملکرد", available: false, note: "API گزارش عملکرد هنوز ساخته نشده" },
+    { key: "settings",    icon: "⚙️", label: "تنظیمات", available: false, note: "API تنظیمات هنوز ساخته نشده" },
+];
+
+let cache = { classes: null, students: null, exams: null, questions: null, conversations: null, teachingAssignments: null, assignments: null };
+
+function navigate(key) {
+    setActiveNav(key);
+    render(key);
+}
+
+async function render(key) {
+    const content = document.getElementById("content");
+    content.innerHTML = `<div style="padding:60px;text-align:center;color:var(--muted)">در حال بارگذاری...</div>`;
+    try {
+        if (key === "dashboard") await renderDashboard();
+        else if (key === "classes") await renderClasses();
+        else if (key === "assignments") await renderAssignments();
+        else if (key === "exams") await renderExams();
+        else if (key === "questions") await renderQuestions();
+        else if (key === "grading") await renderGrading();
+        else if (key === "attendance") await renderAttendance();
+        else if (key === "grades") await renderGrades();
+        else if (key === "messages") await renderMessages();
+    } catch (e) {
+        content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${e.message}</div></div>`;
+    }
+}
+
+async function loadTeachingAssignments() {
+    if (!cache.teachingAssignments) cache.teachingAssignments = await api.get("/api/teacher/classes");
+    return cache.teachingAssignments;
+}
+function uniqueClasses(assignments) {
+    const seen = new Map();
+    for (const a of assignments) if (!seen.has(a.class_id)) seen.set(a.class_id, { id: a.class_id, name: a.class_name, grade: a.grade });
+    return [...seen.values()];
+}
+async function loadClasses() {
+    return uniqueClasses(await loadTeachingAssignments());
+}
+async function loadStudents() {
+    if (!cache.students) cache.students = await api.get("/api/admin/students");
+    return cache.students;
+}
+
+/* =========================================================
+   DASHBOARD
+========================================================= */
+
+async function renderDashboard() {
+    const exams = await api.get("/api/teacher/exams");
+    cache.exams = exams;
+
+    const published = exams.filter(e => e.status === "published").length;
+    const drafts = exams.filter(e => e.status === "draft").length;
+    const closed = exams.filter(e => e.status === "closed").length;
+
+    document.getElementById("content").innerHTML = `
+        <div class="page-head">
+            <div>
+                <div class="page-title">داشبورد معلم</div>
+                <div class="page-subtitle">نمای کلی آزمون‌های شما</div>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card"><div class="stat-top"><div class="stat-icon">📝</div></div><div class="stat-value">${exams.length}</div><div class="stat-label">کل آزمون‌ها</div></div>
+            <div class="stat-card"><div class="stat-top"><div class="stat-icon">📤</div></div><div class="stat-value">${published}</div><div class="stat-label">منتشرشده</div></div>
+            <div class="stat-card"><div class="stat-top"><div class="stat-icon">✏️</div></div><div class="stat-value">${drafts}</div><div class="stat-label">پیش‌نویس</div></div>
+            <div class="stat-card"><div class="stat-top"><div class="stat-icon">🔒</div></div><div class="stat-value">${closed}</div><div class="stat-label">بسته‌شده</div></div>
+        </div>
+
+        <div class="card">
+            <div class="card-head">
+                <div class="card-title">آخرین آزمون‌ها</div>
+                <button class="card-action" onclick="navigate('exams')">مشاهده همه</button>
+            </div>
+            ${exams.slice(0, 5).map(e => `
+                <div class="activity">
+                    <div class="activity-icon">📝</div>
+                    <div>
+                        <div class="activity-text"><b>${e.title}</b> — ${e.class_name} / ${e.subject_name}</div>
+                        <div class="activity-time">${examStatusLabel(e.status)}</div>
+                    </div>
+                </div>
+            `).join("") || `<div class="page-subtitle">آزمونی ثبت نشده</div>`}
+        </div>
+    `;
+}
+
+function examStatusLabel(s) {
+    return { draft: "پیش‌نویس", published: "منتشرشده", closed: "بسته‌شده", archived: "بایگانی" }[s] || s;
+}
+function examStatusColor(s) {
+    return { draft: "orange", published: "green", closed: "red", archived: "red" }[s] || "orange";
+}
+
+/* =========================================================
+   CLASSES (real -- via teaching_assignments, only what this teacher teaches)
+========================================================= */
+
+async function renderClasses() {
+    const assignments = await loadTeachingAssignments();
+    document.getElementById("content").innerHTML = `
+        <div class="page-head">
+            <div>
+                <div class="page-title">کلاس‌های من</div>
+                <div class="page-subtitle">${assignments.length} تخصیص کلاس/درس</div>
+            </div>
+        </div>
+        <div class="module"><div class="module-body table-wrap">
+            <table>
+                <thead><tr><th>کلاس</th><th>پایه</th><th>درس</th></tr></thead>
+                <tbody>
+                    ${assignments.map(a => `<tr><td>${a.class_name}</td><td>${a.grade || "—"}</td><td>${a.subject_name}</td></tr>`).join("") || `<tr><td colspan="3" style="text-align:center;color:var(--muted)">هنوز به کلاس/درسی متصل نشده‌اید — از مدیر مدرسه بخواهید شما را تخصیص دهد</td></tr>`}
+                </tbody>
+            </table>
+        </div></div>
+    `;
+}
+
+/* =========================================================
+   ASSIGNMENTS
+========================================================= */
+
+const SUBMISSION_TYPE_LABELS = { text: "متنی", photo: "عکس", audio: "صوتی", draw: "نقاشی", match: "تطبیق (خودکار)", drag_drop: "دسته‌بندی (خودکار)" };
+
+async function renderAssignments() {
+    const assignments = await api.get("/api/teacher/assignments");
+    cache.assignments = assignments;
+
+    document.getElementById("content").innerHTML = `
+        <div class="page-head">
+            <div><div class="page-title">تکالیف</div><div class="page-subtitle">${assignments.length} تکلیف</div></div>
+            <button class="primary-btn" onclick="openAssignmentForm()">+ تکلیف جدید</button>
+        </div>
+        <div class="module"><div class="module-body table-wrap">
+            <table>
+                <thead><tr><th>عنوان</th><th>کلاس / درس</th><th>نوع پاسخ</th><th>مهلت</th><th>پاسخ‌ها</th><th></th></tr></thead>
+                <tbody>
+                    ${assignments.map(a => `
+                        <tr>
+                            <td>${a.title}</td>
+                            <td>${a.class_name} / ${a.subject_name}</td>
+                            <td>${SUBMISSION_TYPE_LABELS[a.submission_type] || a.submission_type}</td>
+                            <td>${new Date(a.due_at).toLocaleString("fa-IR")}</td>
+                            <td>${a.submission_count}</td>
+                            <td style="display:flex;gap:6px">
+                                <button class="secondary-btn" onclick="openSubmissionsList(${a.id}, '${a.title.replace(/'/g, "")}', '${a.submission_type}')">مشاهده پاسخ‌ها</button>
+                                <button class="secondary-btn" onclick="deleteAssignment(${a.id})">حذف</button>
+                            </td>
+                        </tr>
+                    `).join("") || `<tr><td colspan="6" style="text-align:center;color:var(--muted)">تکلیفی ثبت نشده</td></tr>`}
+                </tbody>
+            </table>
+        </div></div>
+    `;
+}
+
+async function openAssignmentForm() {
+    const assignments = await loadTeachingAssignments();
+    if (assignments.length === 0) {
+        toast("هنوز به هیچ کلاس/درسی متصل نیستید — از مدیر بخواهید شما را تخصیص دهد", true);
+        return;
+    }
+    openModal("تکلیف جدید", `
+        <form id="assignmentForm">
+            <div class="form-group"><label>عنوان</label><input class="form-input" name="title" required></div>
+            <div class="form-group"><label>کلاس / درس</label>
+                <select class="form-input" name="combo" required>
+                    ${assignments.map(a => `<option value="${a.class_id}:${a.subject_id}">${a.class_name} — ${a.subject_name}</option>`).join("")}
+                </select>
+            </div>
+            <div class="form-group"><label>توضیحات (اختیاری)</label><textarea class="form-input" name="description" rows="2" style="height:auto;padding:10px 12px"></textarea></div>
+            <div class="form-group"><label>نوع پاسخ دانش‌آموز</label>
+                <select class="form-input" name="submission_type" id="submissionTypeSelect" onchange="onSubmissionTypeChange()">
+                    <option value="text">متنی</option>
+                    <option value="photo">عکس (مثلاً از دفتر مشق)</option>
+                    <option value="audio">صوتی (مثلاً روخوانی)</option>
+                    <option value="draw">نقاشی (کشیدن با انگشت/ماوس)</option>
+                    <option value="match">تطبیق — خودکار تصحیح می‌شود</option>
+                    <option value="drag_drop">دسته‌بندی — خودکار تصحیح می‌شود</option>
+                </select>
+            </div>
+            <div id="interactiveBuilder"></div>
+            <div class="form-group"><label>مهلت ارسال</label><input class="form-input" name="due_at" type="datetime-local" required></div>
+            <div class="form-group" style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" name="allow_late" id="allowLate" style="width:auto">
+                <label for="allowLate" style="margin:0">ارسال با تأخیر مجاز باشد</label>
+            </div>
+            <div class="form-group"><label>حداکثر تعداد ارسال</label><input class="form-input" name="max_attempts" type="number" min="1" value="1"></div>
+            <div class="form-group"><label>نمره کامل</label><input class="form-input" name="max_score" type="number" min="1" value="20"></div>
+            <div class="modal-footer">
+                <button type="submit" class="primary-btn">ثبت تکلیف</button>
+                <button type="button" class="secondary-btn" onclick="closeModal()">انصراف</button>
+            </div>
+        </form>
+    `);
+    onSubmissionTypeChange();
+
+    document.getElementById("assignmentForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const body = Object.fromEntries(fd.entries());
+        const [classId, subjectId] = body.combo.split(":");
+        delete body.combo;
+        body.class_id = classId; body.subject_id = subjectId;
+        body.allow_late = fd.get("allow_late") ? true : false;
+        body.due_at = new Date(body.due_at).toISOString();
+
+        if (body.submission_type === "match" || body.submission_type === "drag_drop") {
+            try {
+                body.question_payload = collectInteractivePayload(body.submission_type);
+            } catch (err) {
+                toast(err.message, true);
+                return;
+            }
+        }
+
+        await withToast(() => api.post("/api/teacher/assignments", body), "تکلیف ثبت شد");
+        closeModal();
+        renderAssignments();
+    });
+}
+
+// -- interactive assignment payload builder (match / drag_drop) --
+// Renders inline inside the assignment form; only shown for those two types.
+function onSubmissionTypeChange() {
+    const type = document.getElementById("submissionTypeSelect").value;
+    const box = document.getElementById("interactiveBuilder");
+    if (type === "match") {
+        box.innerHTML = `
+            <div class="form-group">
+                <label>جفت‌های تطبیق (حداقل ۲، حداکثر ۱۰)</label>
+                <div id="matchPairs"></div>
+                <button type="button" class="secondary-btn" onclick="addMatchPairRow()">+ افزودن جفت</button>
+            </div>
+        `;
+        addMatchPairRow(); addMatchPairRow();
+    } else if (type === "drag_drop") {
+        box.innerHTML = `
+            <div class="form-group">
+                <label>نام دسته‌ها (با ویرگول جدا کنید)</label>
+                <input class="form-input" id="bucketNames" placeholder="مثلاً: حیوانات، میوه‌ها">
+            </div>
+            <div class="form-group">
+                <label>آیتم‌ها (هر کدام + دسته‌ی درست، حداقل ۲، حداکثر ۱۵)</label>
+                <div id="dragItems"></div>
+                <button type="button" class="secondary-btn" onclick="addDragItemRow()">+ افزودن آیتم</button>
+            </div>
+        `;
+        addDragItemRow(); addDragItemRow();
+    } else {
+        box.innerHTML = "";
+    }
+}
+
+function addMatchPairRow() {
+    const container = document.getElementById("matchPairs");
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:8px;margin-bottom:6px";
+    row.innerHTML = `
+        <input class="form-input match-left" placeholder="سمت چپ (مثلاً: سلام)">
+        <input class="form-input match-right" placeholder="سمت راست (مثلاً: Hello)">
+        <button type="button" class="secondary-btn" onclick="this.parentElement.remove()">حذف</button>
+    `;
+    container.appendChild(row);
+}
+
+function addDragItemRow() {
+    const container = document.getElementById("dragItems");
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:8px;margin-bottom:6px";
+    row.innerHTML = `
+        <input class="form-input drag-item-text" placeholder="متن آیتم (مثلاً: سیب)">
+        <input class="form-input drag-item-bucket" type="number" min="0" placeholder="شماره دسته (۰ برای اولی)" style="max-width:150px">
+        <button type="button" class="secondary-btn" onclick="this.parentElement.remove()">حذف</button>
+    `;
+    container.appendChild(row);
+}
+
+function collectInteractivePayload(type) {
+    if (type === "match") {
+        const pairs = [...document.querySelectorAll("#matchPairs > div")].map(row => ({
+            left: row.querySelector(".match-left").value,
+            right: row.querySelector(".match-right").value,
+        })).filter(p => p.left.trim() && p.right.trim());
+        if (pairs.length < 2) throw new Error("حداقل ۲ جفت کامل لازم است");
+        return { pairs };
+    }
+    if (type === "drag_drop") {
+        const buckets = document.getElementById("bucketNames").value.split("،").join(",").split(",").map(b => b.trim()).filter(Boolean);
+        if (buckets.length < 2) throw new Error("حداقل ۲ دسته لازم است");
+        const items = [...document.querySelectorAll("#dragItems > div")].map(row => ({
+            text: row.querySelector(".drag-item-text").value,
+            bucket_index: Number(row.querySelector(".drag-item-bucket").value),
+        })).filter(it => it.text.trim());
+        if (items.length < 2) throw new Error("حداقل ۲ آیتم لازم است");
+        for (const it of items) {
+            if (!Number.isInteger(it.bucket_index) || it.bucket_index < 0 || it.bucket_index >= buckets.length) {
+                throw new Error(`شماره دسته برای «${it.text}» نامعتبر است (باید بین ۰ و ${buckets.length - 1} باشد)`);
+            }
+        }
+        return { buckets, items };
+    }
+}
+
+async function deleteAssignment(id) {
+    if (!confirm("از حذف این تکلیف مطمئن هستید؟")) return;
+    await withToast(() => api.del("/api/teacher/assignments", { id }), "تکلیف حذف شد");
+    renderAssignments();
+}
+
+async function openSubmissionsList(assignmentId, title, submissionType) {
+    const submissions = await api.get(`/api/teacher/submissions?assignment_id=${assignmentId}`);
+    const isAutoGraded = submissionType === "match" || submissionType === "drag_drop";
+    openModal(`پاسخ‌های: ${title}`, `
+        <div style="max-height:420px;overflow:auto">
+            ${submissions.map(s => `
+                <div class="card" style="margin-bottom:10px">
+                    <div class="card-head"><div class="card-title">${s.student_name}</div>
+                        <span class="status ${s.status === "graded" ? "green" : s.status === "late" ? "orange" : "orange"}">${submissionStatusLabel(s.status)}</span>
+                    </div>
+                    ${s.body ? `<div style="font-size:12px;background:var(--surface2);border-radius:8px;padding:8px 10px;margin-bottom:8px">${s.body}</div>` : ""}
+                    ${!isAutoGraded && s.answer_data ? renderAnswerPreview(s) : ""}
+                    ${isAutoGraded
+                        ? `<div class="page-subtitle">نمره‌ی خودکار: ${s.score ?? "—"}</div>`
+                        : `<form onsubmit="return submitAssignmentGrade(event, ${s.id}, ${assignmentId}, '${title.replace(/'/g, "")}', '${submissionType}')">
+                        <div class="form-group" style="display:flex;gap:8px">
+                            <input class="form-input" name="score" type="number" min="0" placeholder="نمره" value="${s.score ?? ""}" required style="max-width:110px">
+                            <input class="form-input" name="feedback" placeholder="بازخورد" value="${s.feedback || ""}">
+                            <button type="submit" class="secondary-btn">ثبت</button>
+                        </div>
+                    </form>`}
+                </div>
+            `).join("") || `<div class="page-subtitle">هنوز پاسخی ارسال نشده</div>`}
+        </div>
+        <div class="modal-footer"><button class="secondary-btn" onclick="closeModal()">بستن</button></div>
+    `);
+}
+
+function submissionStatusLabel(s) { return { submitted: "ارسال‌شده", late: "با تأخیر", graded: "تصحیح‌شده" }[s] || s; }
+
+function renderAnswerPreview(s) {
+    // answer_data is a data: URI (image or audio) captured client-side -- see student panel
+    if (s.answer_data.startsWith("data:image")) return `<img src="${s.answer_data}" style="max-width:200px;border-radius:8px;margin-bottom:8px">`;
+    if (s.answer_data.startsWith("data:audio")) return `<audio controls src="${s.answer_data}" style="width:100%;margin-bottom:8px"></audio>`;
+    return "";
+}
+
+async function submitAssignmentGrade(event, submissionId, assignmentId, title) {
+    event.preventDefault();
+    const fd = new FormData(event.target);
+    await withToast(() => api.post("/api/teacher/submissions", {
+        submission_id: submissionId, score: Number(fd.get("score")), feedback: fd.get("feedback") || null,
+    }), "نمره ثبت شد");
+    openSubmissionsList(assignmentId, title);
+    return false;
+}
+
+/* =========================================================
+   EXAMS
+========================================================= */
+
+async function renderExams() {
+    const exams = await api.get("/api/teacher/exams");
+    cache.exams = exams;
+
+    document.getElementById("content").innerHTML = `
+        <div class="page-head">
+            <div><div class="page-title">آزمون‌ها</div><div class="page-subtitle">${exams.length} آزمون</div></div>
+            <button class="primary-btn" onclick="openExamForm()">+ آزمون جدید</button>
+        </div>
+        <div class="module"><div class="module-body table-wrap">
+            <table>
+                <thead><tr><th>عنوان</th><th>کلاس / درس</th><th>وضعیت</th><th></th></tr></thead>
+                <tbody>
+                    ${exams.map(e => `
+                        <tr>
+                            <td>${e.title}</td>
+                            <td>${e.class_name} / ${e.subject_name}</td>
+                            <td><span class="status ${examStatusColor(e.status)}">${examStatusLabel(e.status)}</span></td>
+                            <td style="display:flex;gap:6px;flex-wrap:wrap">
+                                <button class="secondary-btn" onclick="openExamQuestions(${e.id})">سؤالات</button>
+                                ${e.status === "draft" ? `<button class="secondary-btn" onclick="publishExam(${e.id})">انتشار</button>` : ""}
+                                ${e.status === "published" ? `<button class="secondary-btn" onclick="closeExam(${e.id})">بستن</button>` : ""}
+                                <button class="secondary-btn" onclick="deleteExam(${e.id})">حذف</button>
+                            </td>
+                        </tr>
+                    `).join("") || `<tr><td colspan="4" style="text-align:center;color:var(--muted)">آزمونی ثبت نشده</td></tr>`}
+                </tbody>
+            </table>
+        </div></div>
+    `;
+}
+
+async function openExamForm() {
+    const assignments = await loadTeachingAssignments();
+    if (assignments.length === 0) {
+        toast("هنوز به هیچ کلاس/درسی متصل نیستید — از مدیر بخواهید شما را تخصیص دهد", true);
+        return;
+    }
+    openModal("آزمون جدید", `
+        <form id="examForm">
+            <div class="form-group"><label>عنوان آزمون</label><input class="form-input" name="title" required></div>
+            <div class="form-group"><label>کلاس / درس</label>
+                <select class="form-input" name="combo" required>
+                    ${assignments.map(a => `<option value="${a.class_id}:${a.subject_id}">${a.class_name} — ${a.subject_name}</option>`).join("")}
+                </select>
+            </div>
+            <div class="form-group"><label>توضیحات (اختیاری)</label><textarea class="form-input" name="description" rows="2" style="height:auto;padding:10px 12px"></textarea></div>
+            <div class="form-group"><label>شروع</label><input class="form-input" name="start_at" type="datetime-local" required></div>
+            <div class="form-group"><label>پایان</label><input class="form-input" name="end_at" type="datetime-local" required></div>
+            <div class="form-group"><label>مدت (دقیقه)</label><input class="form-input" name="duration_minutes" type="number" min="1" required></div>
+            <div class="form-group"><label>حداکثر تعداد تلاش</label><input class="form-input" name="max_attempts" type="number" min="1" value="1"></div>
+            <div class="modal-footer">
+                <button type="submit" class="primary-btn">ساخت (پیش‌نویس)</button>
+                <button type="button" class="secondary-btn" onclick="closeModal()">انصراف</button>
+            </div>
+        </form>
+    `);
+
+    document.getElementById("examForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const body = Object.fromEntries(fd.entries());
+        const [classId, subjectId] = body.combo.split(":");
+        delete body.combo;
+        body.class_id = classId; body.subject_id = subjectId;
+        body.start_at = new Date(body.start_at).toISOString();
+        body.end_at = new Date(body.end_at).toISOString();
+        await withToast(() => api.post("/api/teacher/exams", body), "آزمون ساخته شد");
+        closeModal();
+        renderExams();
+    });
+}
+
+async function publishExam(id) {
+    if (!confirm("بعد از انتشار، فقط بستن آزمون ممکن است. مطمئنید؟")) return;
+    await withToast(() => api.put("/api/teacher/exams", { id, action: "publish" }), "آزمون منتشر شد");
+    renderExams();
+}
+async function closeExam(id) {
+    await withToast(() => api.put("/api/teacher/exams", { id, action: "close" }), "آزمون بسته شد");
+    renderExams();
+}
+async function deleteExam(id) {
+    if (!confirm("از حذف این آزمون مطمئن هستید؟")) return;
+    await withToast(() => api.del("/api/teacher/exams", { id }), "آزمون حذف شد");
+    renderExams();
+}
+
+async function openExamQuestions(examId) {
+    const [bank, exams] = await Promise.all([
+        cache.questions || api.get("/api/teacher/questions"),
+        cache.exams || api.get("/api/teacher/exams"),
+    ]);
+    cache.questions = bank;
+    const exam = exams.find(e => e.id === examId);
+
+    openModal(`سؤالات آزمون: ${exam ? exam.title : ""}`, `
+        <div class="page-subtitle" style="margin-bottom:12px">یک سؤال از بانک سؤال انتخاب کن و به این آزمون اضافه کن (فقط برای آزمون پیش‌نویس).</div>
+        <form id="attachForm">
+            <div class="form-group"><label>سؤال</label>
+                <select class="form-input" name="question_id" required>
+                    ${bank.map(q => `<option value="${q.id}">${q.text.slice(0, 60)}</option>`).join("") || `<option disabled>بانک سؤال خالی است</option>`}
+                </select>
+            </div>
+            <div class="form-group"><label>نمره این سؤال</label><input class="form-input" name="score" type="number" min="1" value="10"></div>
+            <div class="form-group"><label>ترتیب (position)</label><input class="form-input" name="position" type="number" min="0" value="0"></div>
+            <div class="modal-footer">
+                <button type="submit" class="primary-btn">افزودن</button>
+                <button type="button" class="secondary-btn" onclick="closeModal()">بستن</button>
+            </div>
+        </form>
+    `);
+
+    document.getElementById("attachForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const body = Object.fromEntries(fd.entries());
+        body.exam_id = examId;
+        await withToast(() => api.post("/api/teacher/exam-questions", body), "سؤال اضافه شد");
+        closeModal();
+    });
+}
+
+/* =========================================================
+   QUESTION BANK
+========================================================= */
+
+async function renderQuestions() {
+    const questions = await api.get("/api/teacher/questions");
+    cache.questions = questions;
+
+    document.getElementById("content").innerHTML = `
+        <div class="page-head">
+            <div><div class="page-title">بانک سؤال</div><div class="page-subtitle">${questions.length} سؤال</div></div>
+            <button class="primary-btn" onclick="openQuestionForm()">+ سؤال جدید</button>
+        </div>
+        <div class="module"><div class="module-body table-wrap">
+            <table>
+                <thead><tr><th>متن سؤال</th><th>نوع</th><th>تصحیح</th></tr></thead>
+                <tbody>
+                    ${questions.map(q => `
+                        <tr>
+                            <td>${q.text}</td>
+                            <td>${questionTypeLabel(q.type)}</td>
+                            <td><span class="status ${["multiple_choice","true_false","numeric"].includes(q.type) ? "green" : "orange"}">${["multiple_choice","true_false","numeric"].includes(q.type) ? "خودکار" : "دستی"}</span></td>
+                        </tr>
+                    `).join("") || `<tr><td colspan="3" style="text-align:center;color:var(--muted)">سؤالی ثبت نشده</td></tr>`}
+                </tbody>
+            </table>
+        </div></div>
+    `;
+}
+
+function questionTypeLabel(t) {
+    return { multiple_choice: "چندگزینه‌ای", true_false: "درست/غلط", numeric: "عددی", short_answer: "پاسخ کوتاه", long_answer: "تشریحی" }[t] || t;
+}
+
+function openQuestionForm() {
+    openModal("سؤال جدید", `
+        <form id="questionForm">
+            <div class="form-group"><label>نوع سؤال</label>
+                <select class="form-input" name="type" id="qType" onchange="onQuestionTypeChange()">
+                    <option value="multiple_choice">چندگزینه‌ای (تصحیح خودکار)</option>
+                    <option value="true_false">درست/غلط (تصحیح خودکار)</option>
+                    <option value="numeric">عددی (تصحیح خودکار)</option>
+                    <option value="short_answer">پاسخ کوتاه (نیازمند بررسی دستی)</option>
+                    <option value="long_answer">تشریحی (تصحیح دستی)</option>
+                </select>
+            </div>
+            <div class="form-group"><label>متن سؤال</label><textarea class="form-input" name="text" rows="2" style="height:auto;padding:10px 12px" required></textarea></div>
+            <div class="form-group"><label>شناسه درس (اختیاری)</label><input class="form-input" name="subject_id" type="number"></div>
+            <div id="typeFields"></div>
+            <div class="modal-footer">
+                <button type="submit" class="primary-btn">ثبت سؤال</button>
+                <button type="button" class="secondary-btn" onclick="closeModal()">انصراف</button>
+            </div>
+        </form>
+    `);
+    onQuestionTypeChange();
+
+    document.getElementById("questionForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const type = fd.get("type");
+        const body = { type, text: fd.get("text"), subject_id: fd.get("subject_id") || null };
+
+        if (type === "true_false") body.correct_boolean = fd.get("correct_boolean") === "true";
+        if (type === "numeric") { body.correct_numeric = Number(fd.get("correct_numeric")); body.numeric_tolerance = Number(fd.get("numeric_tolerance") || 0); }
+        if (type === "short_answer" || type === "long_answer") body.correct_text = fd.get("correct_text") || null;
+        if (type === "multiple_choice") {
+            const texts = fd.getAll("opt_text");
+            const correctIdx = Number(fd.get("correct_idx"));
+            body.options = texts.map((t, i) => ({ text: t, is_correct: i === correctIdx }));
+        }
+
+        await withToast(() => api.post("/api/teacher/questions", body), "سؤال ساخته شد");
+        closeModal();
+        renderQuestions();
+    });
+}
+
+function onQuestionTypeChange() {
+    const type = document.getElementById("qType").value;
+    const box = document.getElementById("typeFields");
+    if (type === "multiple_choice") {
+        box.innerHTML = [0, 1, 2, 3].map(i => `
+            <div class="form-group" style="display:flex;gap:8px;align-items:center">
+                <input type="radio" name="correct_idx" value="${i}" ${i === 0 ? "checked" : ""}>
+                <input class="form-input" name="opt_text" placeholder="گزینه ${i + 1}" ${i < 2 ? "required" : ""}>
+            </div>
+        `).join("") + `<div class="page-subtitle">گزینه‌ی درست را با دکمه‌ی رادیویی مشخص کن. حداقل ۲ گزینه لازم است.</div>`;
+    } else if (type === "true_false") {
+        box.innerHTML = `<div class="form-group"><label>پاسخ صحیح</label>
+            <select class="form-input" name="correct_boolean"><option value="true">درست</option><option value="false">غلط</option></select></div>`;
+    } else if (type === "numeric") {
+        box.innerHTML = `
+            <div class="form-group"><label>پاسخ صحیح</label><input class="form-input" name="correct_numeric" type="number" step="any" required></div>
+            <div class="form-group"><label>بازه‌ی مجاز خطا (اختیاری)</label><input class="form-input" name="numeric_tolerance" type="number" step="any" value="0"></div>
+        `;
+    } else {
+        box.innerHTML = `<div class="form-group"><label>متن مرجع برای تصحیح دستی (اختیاری)</label><textarea class="form-input" name="correct_text" rows="2" style="height:auto;padding:10px 12px"></textarea></div>`;
+    }
+}
+
+/* =========================================================
+   MANUAL GRADING
+========================================================= */
+
+async function renderGrading() {
+    const exams = await api.get("/api/teacher/exams");
+    cache.exams = exams;
+    const gradeable = exams.filter(e => e.status === "published" || e.status === "closed");
+
+    document.getElementById("content").innerHTML = `
+        <div class="page-head"><div><div class="page-title">تصحیح دستی</div><div class="page-subtitle">پاسخ‌های نیازمند بررسی دستی</div></div></div>
+        <div class="form-group" style="max-width:320px"><label>انتخاب آزمون</label>
+            <select class="form-input" id="gradingExamSelect" onchange="loadGradingQueue(this.value)">
+                <option value="">— انتخاب کنید —</option>
+                ${gradeable.map(e => `<option value="${e.id}">${e.title}</option>`).join("")}
+            </select>
+        </div>
+        <div id="gradingQueue"></div>
+    `;
+}
+
+async function loadGradingQueue(examId) {
+    const box = document.getElementById("gradingQueue");
+    if (!examId) { box.innerHTML = ""; return; }
+    box.innerHTML = `<div class="page-subtitle">در حال بارگذاری...</div>`;
+
+    const [pending, students] = await Promise.all([
+        api.get(`/api/teacher/grading?exam_id=${examId}`),
+        loadStudents(),
+    ]);
+    const nameOf = (id) => students.find(s => s.id === id)?.full_name || `دانش‌آموز #${id}`;
+
+    box.innerHTML = pending.length === 0
+        ? `<div class="card"><div class="page-subtitle">پاسخ بی‌نمره‌ای باقی نمانده</div></div>`
+        : pending.map(a => `
+            <div class="card" style="margin-bottom:12px">
+                <div class="card-head"><div class="card-title">${nameOf(a.student_id)}</div></div>
+                <div class="page-subtitle" style="margin-bottom:6px">${a.question_text}</div>
+                <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:12px;margin-bottom:12px">${a.text_answer || "(پاسخی ثبت نشده)"}</div>
+                <form onsubmit="return submitGrade(event, ${a.answer_id}, ${examId})">
+                    <div class="form-group" style="display:flex;gap:10px">
+                        <input class="form-input" name="score" type="number" min="0" placeholder="نمره" required style="max-width:120px">
+                        <input class="form-input" name="feedback" placeholder="بازخورد (اختیاری)">
+                    </div>
+                    <button type="submit" class="primary-btn">ثبت نمره</button>
+                </form>
+            </div>
+        `).join("");
+}
+
+async function submitGrade(event, answerId, examId) {
+    event.preventDefault();
+    const fd = new FormData(event.target);
+    await withToast(() => api.post("/api/teacher/grading", {
+        answer_id: answerId, score: Number(fd.get("score")), feedback: fd.get("feedback") || null,
+    }), "نمره ثبت شد");
+    loadGradingQueue(examId);
+    return false;
+}
+
+/* =========================================================
+   ATTENDANCE
+========================================================= */
+
+async function renderAttendance() {
+    const classes = await loadClasses();
+    document.getElementById("content").innerHTML = `
+        <div class="page-head"><div><div class="page-title">حضور و غیاب</div><div class="page-subtitle">انتخاب کلاس</div></div></div>
+        <div class="form-group" style="max-width:320px"><label>کلاس</label>
+            <select class="form-input" id="attClassSelect" onchange="loadAttendanceSessions(this.value)">
+                <option value="">— انتخاب کنید —</option>
+                ${classes.map(c => `<option value="${c.id}">${c.name}</option>`).join("")}
+            </select>
+        </div>
+        <div id="attendanceBox"></div>
+    `;
+}
+
+async function loadAttendanceSessions(classId) {
+    const box = document.getElementById("attendanceBox");
+    if (!classId) { box.innerHTML = ""; return; }
+    const sessions = await api.get(`/api/teacher/attendance?class_id=${classId}`);
+    box.innerHTML = `
+        <div class="page-head" style="margin-top:20px">
+            <div class="page-subtitle">${sessions.length} جلسه ثبت‌شده</div>
+            <button class="primary-btn" onclick="createAttendanceSession(${classId})">+ جلسه امروز</button>
+        </div>
+        <div class="module"><div class="module-body table-wrap">
+            <table>
+                <thead><tr><th>تاریخ</th><th></th></tr></thead>
+                <tbody>
+                    ${sessions.map(s => `<tr><td>${s.session_date}</td><td><button class="secondary-btn" onclick="openAttendanceSession(${s.id})">ثبت/ویرایش</button></td></tr>`).join("") || `<tr><td colspan="2" style="text-align:center;color:var(--muted)">جلسه‌ای ثبت نشده</td></tr>`}
+                </tbody>
+            </table>
+        </div></div>
+    `;
+}
+
+async function createAttendanceSession(classId) {
+    const today = new Date().toISOString().slice(0, 10);
+    const result = await withToast(() => api.post("/api/teacher/attendance", { action: "create_session", class_id: classId, session_date: today }), "جلسه ساخته شد");
+    loadAttendanceSessions(classId);
+    if (result?.session_id) openAttendanceSession(result.session_id);
+}
+
+async function openAttendanceSession(sessionId) {
+    const { session, records } = await api.get(`/api/teacher/attendance?session_id=${sessionId}`);
+    const STATUS_LABELS = { present: "حاضر", absent: "غایب", late: "تأخیر", excused: "موجه" };
+
+    openModal(`حضور و غیاب — ${session.session_date}`, `
+        <form id="attendanceForm">
+            ${records.map(r => `
+                <div class="form-group" style="display:flex;justify-content:space-between;align-items:center">
+                    <span>${r.full_name}</span>
+                    <select class="form-input" name="status_${r.student_id}" style="width:140px">
+                        ${Object.entries(STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${r.status === v ? "selected" : ""}>${l}</option>`).join("")}
+                    </select>
+                </div>
+            `).join("")}
+            <div class="modal-footer">
+                <button type="submit" class="primary-btn">ذخیره</button>
+                <button type="button" class="secondary-btn" onclick="closeModal()">بستن</button>
+            </div>
+        </form>
+    `);
+
+    document.getElementById("attendanceForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const recordsPayload = records.map(r => ({ student_id: r.student_id, status: fd.get(`status_${r.student_id}`) }));
+        await withToast(() => api.post("/api/teacher/attendance", { action: "mark", session_id: sessionId, records: recordsPayload }), "حضور و غیاب ذخیره شد");
+        closeModal();
+    });
+}
+
+/* =========================================================
+   GRADES
+========================================================= */
+
+async function renderGrades() {
+    const assignments = await loadTeachingAssignments();
+    document.getElementById("content").innerHTML = `
+        <div class="page-head"><div><div class="page-title">نمرات</div><div class="page-subtitle">انتخاب کلاس و درس</div></div></div>
+        <div style="display:flex;gap:12px;margin-bottom:16px;align-items:flex-end">
+            <div class="form-group" style="max-width:280px;margin-bottom:0"><label>کلاس / درس</label>
+                <select class="form-input" id="gradesComboSelect">
+                    ${assignments.map(a => `<option value="${a.class_id}:${a.subject_id}">${a.class_name} — ${a.subject_name}</option>`).join("")}
+                </select>
+            </div>
+            <button class="primary-btn" onclick="loadGrades()">نمایش</button>
+        </div>
+        <div id="gradesBox"></div>
+        ${assignments.length === 0 ? `<div class="page-subtitle">هنوز به هیچ کلاس/درسی متصل نیستید — از مدیر بخواهید شما را تخصیص دهد</div>` : ""}
+    `;
+    if (assignments.length) loadGrades();
+}
+
+async function loadGrades() {
+    const [classId, subjectId] = document.getElementById("gradesComboSelect").value.split(":");
+
+    const grades = await api.get(`/api/teacher/grades?class_id=${classId}&subject_id=${subjectId}`);
+    document.getElementById("gradesBox").innerHTML = `
+        <div class="page-head"><div class="page-subtitle">${grades.length} نمره ثبت‌شده</div>
+            <button class="primary-btn" onclick="openGradeForm(${classId}, ${subjectId})">+ ثبت نمره</button>
+        </div>
+        <div class="module"><div class="module-body table-wrap">
+            <table>
+                <thead><tr><th>دانش‌آموز</th><th>نمره</th><th>منبع</th></tr></thead>
+                <tbody>
+                    ${grades.map(g => `<tr><td>${g.student_name}</td><td>${g.score} / ${g.max_score}</td><td>${g.source}</td></tr>`).join("") || `<tr><td colspan="3" style="text-align:center;color:var(--muted)">نمره‌ای ثبت نشده</td></tr>`}
+                </tbody>
+            </table>
+        </div></div>
+    `;
+}
+
+async function openGradeForm(classId, subjectId) {
+    const students = await api.get(`/api/admin/students?class_id=${classId}`);
+    openModal("ثبت نمره جدید", `
+        <form id="gradeForm">
+            <div class="form-group"><label>دانش‌آموز</label>
+                <select class="form-input" name="student_id" required>${students.map(s => `<option value="${s.id}">${s.full_name}</option>`).join("") || ""}</select>
+                ${students.length === 0 ? `<div class="page-subtitle" style="margin-top:4px">دانش‌آموزی در این کلاس ثبت‌نام نشده</div>` : ""}
+            </div>
+            <div class="form-group"><label>نمره</label><input class="form-input" name="score" type="number" step="any" required></div>
+            <div class="form-group"><label>از (max_score)</label><input class="form-input" name="max_score" type="number" step="any" value="20" required></div>
+            <div class="form-group"><label>منبع</label>
+                <select class="form-input" name="source"><option value="manual">دستی</option><option value="assignment">تکلیف</option><option value="exam">آزمون</option><option value="final">نهایی</option></select>
+            </div>
+            <div class="form-group"><label>بازخورد (اختیاری)</label><input class="form-input" name="feedback"></div>
+            <div class="modal-footer">
+                <button type="submit" class="primary-btn">ثبت</button>
+                <button type="button" class="secondary-btn" onclick="closeModal()">انصراف</button>
+            </div>
+        </form>
+    `);
+
+    document.getElementById("gradeForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const body = Object.fromEntries(fd.entries());
+        body.class_id = classId; body.subject_id = subjectId;
+        await withToast(() => api.post("/api/teacher/grades", body), "نمره ثبت شد");
+        closeModal();
+        loadGrades();
+    });
+}
+
+/* =========================================================
+   MESSAGES (same pattern as admin panel)
+========================================================= */
+
+async function renderMessages() {
+    const conversations = await api.get("/api/messages/conversations");
+    cache.conversations = conversations;
+
+    document.getElementById("content").innerHTML = `
+        <div class="page-head">
+            <div><div class="page-title">پیام‌ها</div><div class="page-subtitle">${conversations.length} گفتگو</div></div>
+            <button class="primary-btn" onclick="openNewConversationForm()">+ گفتگوی جدید</button>
+        </div>
+        <div class="module"><div class="module-body">
+            ${conversations.map(c => `
+                <div class="activity" style="cursor:pointer" onclick="openConversation(${c.id}, '${(c.title || "گفتگو").replace(/'/g, "")}')">
+                    <div class="activity-icon">💬</div>
+                    <div>
+                        <div class="activity-text"><b>${c.title || (c.type === "direct" ? "گفتگوی مستقیم" : "گروه")}</b></div>
+                        <div class="activity-time">${c.last_message || "پیامی ارسال نشده"}</div>
+                    </div>
+                </div>
+            `).join("") || `<div class="page-subtitle">گفتگویی وجود ندارد</div>`}
+        </div></div>
+    `;
+}
+
+async function openNewConversationForm() {
+    const students = await loadStudents();
+    openModal("گفتگوی جدید با یک دانش‌آموز", `
+        <form id="newConvForm">
+            <div class="form-group"><label>دانش‌آموز</label>
+                <select class="form-input" name="student_user_id" required>${students.map(s => `<option value="${s.user_id}">${s.full_name}</option>`).join("")}</select>
+            </div>
+            <div class="form-group"><label>پیام اول</label><textarea class="form-input" name="body" rows="3" style="height:auto;padding:10px 12px" required></textarea></div>
+            <div class="modal-footer">
+                <button type="submit" class="primary-btn">شروع گفتگو</button>
+                <button type="button" class="secondary-btn" onclick="closeModal()">انصراف</button>
+            </div>
+        </form>
+        <div class="page-subtitle" style="margin-top:10px">فعلاً فقط می‌توانید با دانش‌آموزان گفتگو شروع کنید.</div>
+    `);
+
+    document.getElementById("newConvForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const studentUserId = fd.get("student_user_id");
+        const firstMessage = fd.get("body");
+        await withToast(async () => {
+            const conv = await api.post("/api/messages/conversations", { type: "direct", member_user_ids: [Number(studentUserId)] });
+            await api.post("/api/messages/messages", { conversation_id: conv.id, body: firstMessage });
+        }, "گفتگو ساخته شد");
+        closeModal();
+        renderMessages();
+    });
+}
+
+async function openConversation(id, title) {
+    const messages = await api.get(`/api/messages/messages?conversation_id=${id}`);
+    openModal(title, `
+        <div style="max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+            ${messages.map(m => `<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:12px"><b>${m.sender_name || "کاربر"}</b><div style="margin-top:4px">${m.body}</div></div>`).join("") || `<div class="page-subtitle">پیامی وجود ندارد</div>`}
+        </div>
+        <form id="replyForm">
+            <div class="form-group"><input class="form-input" name="body" placeholder="پیام..." required></div>
+            <div class="modal-footer"><button type="submit" class="primary-btn">ارسال</button><button type="button" class="secondary-btn" onclick="closeModal()">بستن</button></div>
+        </form>
+    `);
+
+    document.getElementById("replyForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        await withToast(() => api.post("/api/messages/messages", { conversation_id: id, body: fd.get("body") }));
+        openConversation(id, title);
+    });
+}
+
+/* =========================================================
+   INIT
+========================================================= */
+
+(function () {
+    const session = initShell("teacher");
+    if (!session) return;
+    renderNav(NAV_ITEMS, "dashboard");
+    render("dashboard");
+})();
+
+</script>
+</body>
+</html>

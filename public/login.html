@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ورود | مدرسه</title>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap');
+
+:root{
+    --bg:#f5f7fb;
+    --surface:#fff;
+    --surface2:#f8fafc;
+    --text:#172033;
+    --muted:#7b8497;
+    --line:#e8ecf3;
+    --primary:#5b5ce2;
+    --primary-soft:#eeefff;
+    --red:#ef5350;
+    --red-soft:#ffeded;
+    --shadow:0 8px 30px rgba(28,35,60,.06);
+    --radius:18px;
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; }
+
+body{
+    font-family:Vazirmatn,Tahoma,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+}
+
+.card{
+    background:var(--surface);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    padding:36px 30px;
+    width:100%;
+    max-width:380px;
+}
+
+.logo{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:28px;
+}
+
+.logo-icon{
+    width:42px;
+    height:42px;
+    border-radius:12px;
+    background:var(--primary);
+    color:#fff;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:800;
+    font-size:18px;
+}
+
+.logo strong{ display:block; font-size:16px; }
+.logo span{ display:block; font-size:12px; color:var(--muted); }
+
+h1{ font-size:20px; margin-bottom:6px; }
+.subtitle{ color:var(--muted); font-size:13px; margin-bottom:24px; }
+
+label{
+    display:block;
+    font-size:13px;
+    color:var(--muted);
+    margin-bottom:6px;
+    margin-top:16px;
+}
+
+input{
+    width:100%;
+    padding:11px 14px;
+    border:1.5px solid var(--line);
+    border-radius:12px;
+    font-size:14px;
+    font-family:inherit;
+    background:var(--surface2);
+    color:var(--text);
+    outline:none;
+    transition:border-color .15s;
+}
+
+input:focus{ border-color:var(--primary); }
+
+button{
+    font-family:inherit;
+    cursor:pointer;
+}
+
+.submit-btn{
+    width:100%;
+    margin-top:24px;
+    padding:12px;
+    border:none;
+    border-radius:12px;
+    background:var(--primary);
+    color:#fff;
+    font-size:15px;
+    font-weight:600;
+}
+
+.submit-btn:disabled{ opacity:.6; cursor:default; }
+
+.error-box{
+    display:none;
+    margin-top:16px;
+    padding:11px 14px;
+    background:var(--red-soft);
+    color:var(--red);
+    border-radius:10px;
+    font-size:13px;
+    line-height:1.7;
+}
+
+.hint{
+    margin-top:18px;
+    font-size:12px;
+    color:var(--muted);
+    line-height:1.8;
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+    <div class="logo">
+        <div class="logo-icon">م</div>
+        <div>
+            <strong>مدرسه</strong>
+            <span>School Platform</span>
+        </div>
+    </div>
+
+    <h1>ورود به حساب کاربری</h1>
+    <div class="subtitle">اطلاعات ورود خود را وارد کنید</div>
+
+    <form id="loginForm">
+        <label for="schoolId">شناسه مدرسه</label>
+        <input type="number" id="schoolId" inputmode="numeric" required autocomplete="off">
+
+        <label for="username">نام کاربری</label>
+        <input type="text" id="username" required autocomplete="username">
+
+        <label for="password">رمز عبور</label>
+        <input type="password" id="password" required autocomplete="current-password">
+
+        <button type="submit" class="submit-btn" id="submitBtn">ورود</button>
+
+        <div class="error-box" id="errorBox"></div>
+    </form>
+
+    <div class="hint">شناسه مدرسه را از مدیر سیستم خود دریافت کنید.</div>
+</div>
+
+<script src="assets/js/api.js"></script>
+<script>
+// If already logged in with a still-valid-looking session, skip straight to the dashboard.
+(function () {
+    const session = getSession();
+    if (session && session.token) {
+        window.location.href = roleHome(session.roles);
+    }
+})();
+
+function roleHome(roles) {
+    const known = ["admin", "teacher", "student", "parent"];
+    const role = (roles || []).find(r => known.includes(r)) || "student";
+    return `/${role}/index.html`;
+}
+
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const schoolId = document.getElementById("schoolId").value;
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+    const btn = document.getElementById("submitBtn");
+    const errorBox = document.getElementById("errorBox");
+
+    errorBox.style.display = "none";
+    btn.disabled = true;
+    btn.textContent = "در حال ورود...";
+
+    try {
+        const data = await login(schoolId, username, password);
+        window.location.href = roleHome(data.roles);
+    } catch (err) {
+        errorBox.textContent = err.message || "ورود ناموفق بود";
+        errorBox.style.display = "block";
+        btn.disabled = false;
+        btn.textContent = "ورود";
+    }
+});
+</script>
+
+</body>
+</html>
