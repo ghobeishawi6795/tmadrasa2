@@ -14,6 +14,7 @@
 
 <div class="app">
 
+<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileNav()"></div>
 <aside class="sidebar" id="sidebar">
     <div class="logo">
         <div class="logo-icon">م</div>
@@ -35,7 +36,7 @@
 <main class="main">
     <header class="topbar">
         <div class="top-left">
-            <button class="mobile-menu" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+            <button class="mobile-menu" onclick="toggleMobileNav()">☰</button>
         </div>
         <div class="top-right">
             <div class="profile">

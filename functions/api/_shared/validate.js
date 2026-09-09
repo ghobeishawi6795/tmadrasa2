@@ -43,5 +43,6 @@ export function withErrorHandling(handler) {
             console.error(e);
             return errors.server();
         }
+        // debug patch removed — server errors no longer leak e.message to the client
     };
 }

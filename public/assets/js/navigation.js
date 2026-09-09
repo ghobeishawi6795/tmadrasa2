@@ -35,4 +35,20 @@ function renderNav(items, activeKey) {
 function setActiveNav(key) {
     __activePage = key;
     renderNav(__navItems, key);
+    closeMobileNav(); // picking a page from the mobile menu should also dismiss it
+}
+
+/* =========================================================
+   Mobile sidebar open/close (used by the ☰ button + backdrop
+   in every role page's <header>). Centralized here so the fix
+   applies to all 4 dashboards at once.
+========================================================= */
+function toggleMobileNav() {
+    document.getElementById("sidebar")?.classList.toggle("open");
+    document.getElementById("sidebarBackdrop")?.classList.toggle("open");
+}
+
+function closeMobileNav() {
+    document.getElementById("sidebar")?.classList.remove("open");
+    document.getElementById("sidebarBackdrop")?.classList.remove("open");
 }

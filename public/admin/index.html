@@ -13,6 +13,7 @@
 
 <div class="app">
 
+<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileNav()"></div>
 <aside class="sidebar" id="sidebar">
     <div class="logo">
         <div class="logo-icon">م</div>
@@ -34,7 +35,7 @@
 <main class="main">
     <header class="topbar">
         <div class="top-left">
-            <button class="mobile-menu" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+            <button class="mobile-menu" onclick="toggleMobileNav()">☰</button>
         </div>
         <div class="top-right">
             <button type="button" class="secondary-btn" onclick="openOnboardingWizard()" style="margin-left:12px">🚀 شروع سریع</button>
@@ -125,8 +126,8 @@ async function render(key) {
 
 async function renderDashboard() {
     const [students, classes, announcements] = await Promise.all([
-        api.get("/api/admin/students"),
-        api.get("/api/admin/classes"),
+        api.get("/api/admin/students").catch(() => []),
+        api.get("/api/admin/classes").catch(() => []),
         api.get("/api/announcements").catch(() => []),
     ]);
     cache.students = students; cache.classes = classes; cache.announcements = announcements;
@@ -187,7 +188,7 @@ async function renderDashboard() {
 ========================================================= */
 
 async function renderStudents() {
-    const students = await api.get("/api/admin/students");
+    const students = (await api.get("/api/admin/students")) || [];
     cache.students = students;
 
     document.getElementById("content").innerHTML = `
@@ -223,7 +224,7 @@ async function renderStudents() {
 }
 
 async function openStudentImportForm() {
-    const classes = cache.classes || await api.get("/api/admin/classes");
+    const classes = (cache.classes || await api.get("/api/admin/classes")) || [];
     cache.classes = classes;
 
     if (classes.length === 0) {
@@ -280,7 +281,7 @@ async function openStudentImportForm() {
 }
 
 async function openStudentForm() {
-    const classes = cache.classes || await api.get("/api/admin/classes");
+    const classes = (cache.classes || await api.get("/api/admin/classes")) || [];
     cache.classes = classes;
 
     if (classes.length === 0) {
@@ -322,7 +323,7 @@ async function openStudentForm() {
 ========================================================= */
 
 async function renderClasses() {
-    const classes = await api.get("/api/admin/classes");
+    const classes = (await api.get("/api/admin/classes")) || [];
     cache.classes = classes;
 
     document.getElementById("content").innerHTML = `
@@ -840,7 +841,7 @@ async function downloadBackup() {
 ========================================================= */
 
 async function renderAnnouncements() {
-    const announcements = await api.get("/api/announcements");
+    const announcements = (await api.get("/api/announcements")) || [];
     cache.announcements = announcements;
 
     document.getElementById("content").innerHTML = `

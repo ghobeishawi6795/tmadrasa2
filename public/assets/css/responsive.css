@@ -27,10 +27,28 @@
 
     .mobile-menu{
         display:block;
+        position:relative;
+        z-index:101; /* stay above .sidebar (z-index:100) so it's always tappable to close */
     }
 
     .topbar{
         padding:0 16px;
+    }
+
+    /* Tap-anywhere-to-close backdrop behind the open sidebar on mobile.
+       Without this, the sidebar (z-index:100) covers the whole right strip
+       of the screen -- including the hamburger button itself -- with no
+       way to dismiss it except toggling that same covered button. */
+    .sidebar-backdrop{
+        display:none;
+        position:fixed;
+        inset:0;
+        background:rgba(20,24,38,.35);
+        z-index:99;
+    }
+
+    .sidebar-backdrop.open{
+        display:block;
     }
 
     .search{

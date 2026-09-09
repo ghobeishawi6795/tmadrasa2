@@ -4,7 +4,7 @@
 // external monitor hitting this endpoint every few minutes is the
 // practical way to get that alert without adding paid infra.
 // Intentionally returns nothing sensitive (no counts, no user data).
-import { q } from "../_shared/db.js";
+import { q } from "./_shared/db.js";
 
 export async function onRequestGet({ env }) {
     const startedAt = Date.now();
