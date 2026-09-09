@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>پنل دانش‌آموز | مدرسه</title>
+<link rel="stylesheet" href="../assets/css/core.css">
+<link rel="stylesheet" href="../assets/css/layout.css">
+<link rel="stylesheet" href="../assets/css/components.css">
+<link rel="stylesheet" href="../assets/css/responsive.css">
+<link rel="stylesheet" href="../assets/css/elementary-theme.css">
+</head>
+<body>
+
+<div class="app">
+
+<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileNav()"></div>
+<aside class="sidebar" id="sidebar">
+    <div class="logo">
+        <div class="logo-icon">م</div>
+        <div><strong>مدرسه</strong><span>School Platform</span></div>
+    </div>
+
+    <div class="role-box">
+        <div class="role-label">محیط فعلی</div>
+        <div class="role-name" id="roleName">دانش‌آموز</div>
+    </div>
+
+    <nav class="nav" id="nav"></nav>
+
+    <div class="sidebar-bottom">
+        <button class="nav button" onclick="logout()">🚪 خروج</button>
+    </div>
+</aside>
+
+<main class="main">
+    <header class="topbar">
+        <div class="top-left">
+            <button class="mobile-menu" onclick="toggleMobileNav()">☰</button>
+        </div>
+        <div class="top-right">
+            <div class="profile">
+                <div class="avatar" id="avatar">د</div>
+                <div>
+                    <div class="profile-name" id="profileName">—</div>
+                    <div class="profile-role" id="profileRole">—</div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <section class="content" id="content"></section>
+</main>
+
+</div>
+
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+    <div class="modal" id="modalBox">
+        <div class="modal-head">
+            <div class="modal-title" id="modalTitle">عنوان</div>
+            <button class="close" onclick="closeModal()">×</button>
+        </div>
+        <div id="modalContent"></div>
+    </div>
+</div>
+
+<script src="../assets/js/jalali.js"></script>
+<script src="../assets/js/api.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/navigation.js"></script>
+<script src="../assets/js/modal.js"></script>
+
+<script>
+
+/* =========================================================
+   NAV CONFIG
+========================================================= */
+
+const NAV_ITEMS = [
+    { key: "dashboard",     icon: "🏠", label: "خانه" },
+    { key: "assignments",   icon: "📚", label: "تکالیف" },
+    { key: "exams",         icon: "📝", label: "آزمون‌ها" },
+    { key: "attendance",    icon: "📋", label: "حضور و غیاب" },
+    { key: "grades",        icon: "🎯", label: "کارنامه" },
+    { key: "messages",      icon: "💬", label: "پیام‌ها" },
+    { key: "announcements", icon: "📢", label: "اطلاعیه‌ها" },
+    { key: "profile",       icon: "👤", label: "پروفایل" },
+];
+
+function navigate(key) {
+    setActiveNav(key);
+    render(key);
+}
+
+async function render(key) {
+    const content = document.getElementById("content");
+    content.innerHTML = `<div style="padding:60px;text-align:center;color:var(--muted)">در حال بارگذاری...</div>`;
+    try {
+        if (key === "dashboard") await renderDashboard();
+        else if (key === "assignments") await renderAssignments();
+        else if (key === "exams") await renderExams();
+        else if (key === "attendance") await renderAttendance();
+        else if (key === "grades") await renderGrades();
+        else if (key === "messages") await renderMessages();
+        else if (key === "announcements") await renderAnnouncements();
+        else if (key === "profile") await renderProfile();
+    } catch (e) {
+        content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${e.message}</div></div>`;
+    }
+}
+
+/* =========================================================
+   DASHBOARD
+========================================================= */
+
+async function renderDashboard() {
+    const [exams, attendance, report] = await Promise.all([
+        api.get("/api/student/exams"),
+        api.get("/api/student/attendance"),
+        api.get("/api/student/report-card"),
+    ]);
+
+    const upcoming = exams.filter(e => new Date(e.end_at) > new Date());
+
+    document.getElementById("content").innerHTML = `
+        <div class="page-head"><div><div class="page-title">خانه</div><div class="page-subtitle">نمای کلی وضعیت تحصیلی</div></div></div>
+
+        <div class="stats">
+            <div class="stat-card"><div class="stat-top"><div class="stat-icon">📝</div></div><div class="stat-value">${upcoming.length}</div><div class="stat-label">آزمون‌های پیش رو</div></div>
+            <div class="stat-card"><div class="stat-top"><div class="stat-icon">✅</div></div><div class="stat-value">${attendance.summary.present || 0}</div><div class="stat-label">روزهای حاضر</div></div>
+            <div class="stat-card"><div class="stat-top"><div class="stat-icon">❌</div></div><div class="stat-value">${attendance.summary.absent || 0}</div><div class="stat-label">روزهای غایب</div></div>
+            <div class="stat-card"><div class="stat-top"><div class="stat-icon">🎯</div></div><div class="stat-value">${report.overall_average ?? "—"}</div><div class="stat-label">میانگین کل</div></div>
+        </div>
+
+        <div class="card">
+            <div class="card-head"><div class="card-title">آزمون‌های پیش رو</div><button class="card-action" onclick="navigate('exams')">مشاهده همه</button></div>
+            ${upcoming.slice(0, 5).map(e => `
+                <div class="activity">
+                    <div class="activity-icon">📝</div>
+                    <div><div class="activity-text"><b>${e.title}</b> — ${e.subject_name}</div><div class="activity-time">تا ${formatJalaliDateTime(e.end_at)}</div></div>
+                </div>
+            `).join("") || `<div class="page-subtitle">آزمون فعالی نیست</div>`}
+        </div>
+    `;
+}
+
+/* =========================================================
+   ASSIGNMENTS
+========================================================= */
+
+const SUBMISSION_TYPE_LABELS = { text: "متنی", photo: "عکس", audio: "صوتی", draw: "نقاشی", match: "تطبیق", drag_drop: "دسته‌بندی" };
+
+async function renderAssignments() {
+    const assignments = await api.get("/api/student/assignments");
+
+    document.getElementById("content").innerHTML = `
+        <div class="page-head"><div><div class="page-title">تکالیف</div><div class="page-subtitle">${assignments.length} تکلیف</div></div></div>
+        <div class="module"><div class="module-body table-wrap">
+            <table>
+                <thead><tr><th>عنوان</th><th>درس</th><th>مهلت</th><th>وضعیت</th><th></th></tr></thead>
+                <tbody>
+                    ${assignments.map(a => `
+                        <tr>
+                            <td>${a.title}</td>
+                            <td>${a.subject_name}</td>
+                            <td>${formatJalaliDateTime(a.due_at)}</td>
+                            <td>${assignmentStatusBadge(a)}</td>
+                            <td><button class="secondary-btn" onclick='openAssignmentDetail(${JSON.stringify(a)})'>${a.submission_id ? "مشاهده" : "ارسال پاسخ"}</button></td>
+                        </tr>
+                    `).join("") || `<tr><td colspan="5" style="text-align:center;color:var(--muted)">تکلیفی ثبت نشده</td></tr>`}
+                </tbody>
+            </table>
+        </div></div>
+    `;
+}
+
+function assignmentStatusBadge(a) {
+    if (!a.submission_id) return `<span class="status orange">ارسال‌نشده</span>`;
+    const labels = { submitted: ["green", "ارسال‌شده"], late: ["orange", "با تأخیر"], graded: ["green", `نمره: ${a.submission_score}`] };
+    const [color, label] = labels[a.submission_status] || ["orange", a.submission_status];
+    return `<span class="status ${color}">${label}</span>`;
+}
+
+function openAssignmentDetail(a) {
+    const alreadySubmitted = !!a.submission_id;
+    const canResubmit = !alreadySubmitted || a.submission_attempt_number < a.max_attempts;
+    const overdue = new Date() > new Date(a.due_at);
+
+    let bodyHtml = `<div class="page-subtitle" style="margin-bottom:14px">${a.description || ""}</div>`;
+
+    if (alreadySubmitted) {
+        bodyHtml += `<div class="page-subtitle">وضعیت: ${assignmentStatusBadge(a)}</div>`;
+    }
+
+    if (!canResubmit) {
+        bodyHtml += `<div class="page-subtitle" style="margin-top:10px">تعداد ارسال مجاز تمام شده است.</div>`;
+    } else if (overdue && !a.allow_late) {
+        bodyHtml += `<div class="page-subtitle" style="margin-top:10px">مهلت این تکلیف گذشته است.</div>`;
+    } else if (a.submission_type === "text") {
+        bodyHtml += `
+            <form id="submitForm">
+                <div class="form-group"><textarea class="form-input" name="body" rows="5" style="height:auto;padding:10px 12px" placeholder="پاسخ خود را بنویس..." required></textarea></div>
+                <div class="modal-footer"><button type="submit" class="primary-btn">ارسال</button><button type="button" class="secondary-btn" onclick="closeModal()">بستن</button></div>
+            </form>
+        `;
+    } else if (a.submission_type === "photo") {
+        bodyHtml += `
+            <form id="submitForm">
+                <div class="form-group"><label>عکس پاسخ</label><input class="form-input" name="photo" type="file" accept="image/*" capture="environment" required></div>
+                <div id="photoPreview"></div>
+                <div class="modal-footer"><button type="submit" class="primary-btn">ارسال</button><button type="button" class="secondary-btn" onclick="closeModal()">بستن</button></div>
+            </form>
+        `;
+    } else if (a.submission_type === "audio") {
+        bodyHtml += `
+            <div class="form-group">
+                <button type="button" class="secondary-btn" id="recordBtn" onclick="toggleRecording()">🎙️ شروع ضبط</button>
+                <div id="audioPreview" style="margin-top:10px"></div>
+            </div>
+            <form id="submitForm">
+                <div class="modal-footer"><button type="submit" class="primary-btn" id="submitAudioBtn" disabled>ارسال</button><button type="button" class="secondary-btn" onclick="closeModal()">بستن</button></div>
+            </form>
+        `;
+    } else if (a.submission_type === "draw") {
+        bodyHtml += `
+            <div class="form-group">
+                <canvas id="drawCanvas" width="320" height="240" style="border:1px solid var(--line);border-radius:8px;width:100%;max-width:320px;touch-action:none;background:#fff"></canvas><br>
+                <button type="button" class="secondary-btn" onclick="clearDrawCanvas()" style="margin-top:8px">پاک کردن</button>
+            </div>
+            <form id="submitForm">
+                <div class="modal-footer"><button type="submit" class="primary-btn">ارسال</button><button type="button" class="secondary-btn" onclick="closeModal()">بستن</button></div>
+            </form>
+        `;
+    } else if (a.submission_type === "match") {
+        bodyHtml += renderMatchBuilder(a.interactive);
+    } else if (a.submission_type === "drag_drop") {
+        bodyHtml += renderDragDropBuilder(a.interactive);
+    }
+
+    openModal(a.title, bodyHtml);
+
+    const form = document.getElementById("submitForm");
+    if (!form) return;
+
+    if (a.submission_type === "photo") {
+        form.querySelector("[name=photo]").addEventListener("change", async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const dataUrl = await fileToDataUrl(file);
+            document.getElementById("photoPreview").innerHTML = `<img src="${dataUrl}" style="max-width:200px;border-radius:8px;margin-top:8px">`;
+            form.dataset.answerData = dataUrl;
+        });
+    }
+    if (a.submission_type === "draw") initDrawCanvas();
+    if (a.submission_type === "match") initMatchBuilder();
+    if (a.submission_type === "drag_drop") initDragDropBuilder();
+
+    form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const body = { assignment_id: a.id };
+        if (a.submission_type === "text") {
+            body.body = new FormData(form).get("body");
+        } else if (a.submission_type === "photo") {
+            if (!form.dataset.answerData) { toast("لطفاً یک عکس انتخاب کن", true); return; }
+            body.answer_data = form.dataset.answerData;
+        } else if (a.submission_type === "audio") {
+            if (!form.dataset.answerData) { toast("لطفاً یک فایل صوتی ضبط کن", true); return; }
+            body.answer_data = form.dataset.answerData;
+        } else if (a.submission_type === "draw") {
+            const canvas = document.getElementById("drawCanvas");
+            body.answer_data = canvas.toDataURL("image/png");
+        } else if (a.submission_type === "match") {
+            const answer = collectMatchAnswer(a.interactive);
+            if (!answer) { toast("لطفاً همه‌ی موارد را تطبیق بده", true); return; }
+            body.answer_json = answer;
+        } else if (a.submission_type === "drag_drop") {
+            const answer = collectDragDropAnswer(a.interactive);
+            if (!answer) { toast("لطفاً برای همه‌ی آیتم‌ها یک دسته انتخاب کن", true); return; }
+            body.answer_json = answer;
+        }
+        const result = await withToast(() => api.post("/api/student/submissions", body), "پاسخ ارسال شد");
+        if (result && result.score !== undefined && result.score !== null) {
+            toast(`نمره‌ی خودکار: ${result.score}`);
+        }
+        closeModal();
+        renderAssignments();
+    });
+}
+
+// -- draw (canvas) --
+let __drawCtx = null, __drawing = false;
+function initDrawCanvas() {
+    const canvas = document.getElementById("drawCanvas");
+    __drawCtx = canvas.getContext("2d");
+    __drawCtx.lineWidth = 3;
+    __drawCtx.lineCap = "round";
+    __drawCtx.strokeStyle = "#172033";
+
+    const pos = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+        const t = e.touches ? e.touches[0] : e;
+        return { x: (t.clientX - rect.left) * scaleX, y: (t.clientY - rect.top) * scaleY };
+    };
+    const start = (e) => { e.preventDefault(); __drawing = true; const p = pos(e); __drawCtx.beginPath(); __drawCtx.moveTo(p.x, p.y); };
+    const move = (e) => { if (!__drawing) return; e.preventDefault(); const p = pos(e); __drawCtx.lineTo(p.x, p.y); __drawCtx.stroke(); };
+    const end = () => { __drawing = false; };
+
+    canvas.addEventListener("mousedown", start);
+    canvas.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", end);
+    canvas.addEventListener("touchstart", start);
+    canvas.addEventListener("touchmove", move);
+    canvas.addEventListener("touchend", end);
+}
+function clearDrawCanvas() {
+    const canvas = document.getElementById("drawCanvas");
+    __drawCtx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+// -- match (tap left item, then tap its right pair) --
+let __matchSelections = {}; // left_id -> right_id
+function renderMatchBuilder(interactive) {
+    return `
+        <div class="page-subtitle" style="margin-bottom:10px">یک مورد از ستون راست را انتخاب کن، بعد جفتش را از ستون چپ بزن.</div>
+        <div style="display:flex;gap:16px">
+            <div id="matchLeftCol" style="flex:1;display:flex;flex-direction:column;gap:6px">
+                ${interactive.left_items.map(li => `<button type="button" class="secondary-btn match-left-btn" data-id="${li.id}">${li.text}</button>`).join("")}
+            </div>
+            <div id="matchRightCol" style="flex:1;display:flex;flex-direction:column;gap:6px">
+                ${interactive.right_items.map(ri => `<button type="button" class="secondary-btn match-right-btn" data-id="${ri.id}">${ri.text}</button>`).join("")}
+            </div>
+        </div>
+        <form id="submitForm"><div class="modal-footer"><button type="submit" class="primary-btn">ارسال</button><button type="button" class="secondary-btn" onclick="closeModal()">بستن</button></div></form>
+    `;
+}
+function initMatchBuilder() {
+    __matchSelections = {};
+    let selectedRight = null;
+    const rightBtns = document.querySelectorAll(".match-right-btn");
+    const leftBtns = document.querySelectorAll(".match-left-btn");
+
+    rightBtns.forEach(btn => btn.addEventListener("click", () => {
+        rightBtns.forEach(b => b.style.outline = "");
+        selectedRight = btn.dataset.id;
+        btn.style.outline = "2px solid var(--primary)";
+    }));
+    leftBtns.forEach(btn => btn.addEventListener("click", () => {
+        if (!selectedRight) { toast("اول یکی از ستون راست را انتخاب کن", true); return; }
+        __matchSelections[btn.dataset.id] = selectedRight;
+        btn.style.background = "var(--primary-soft)";
+        btn.textContent = btn.textContent.replace(/ ✓$/, "") + " ✓";
+        rightBtns.forEach(b => b.style.outline = "");
+        selectedRight = null;
+    }));
+}
+function collectMatchAnswer(interactive) {
+    const matches = Object.entries(__matchSelections).map(([left_id, right_id]) => ({ left_id, right_id }));
+    if (matches.length < interactive.left_items.length) return null;
+    return { matches };
+}
+
+// -- drag_drop (dropdown per item -- more reliable than real drag/drop on mobile touch screens) --
+function renderDragDropBuilder(interactive) {
+    return `
+        <div class="page-subtitle" style="margin-bottom:10px">برای هر آیتم، دسته‌ی درست را انتخاب کن.</div>
+        <div id="dragDropItems" style="display:flex;flex-direction:column;gap:8px">
+            ${interactive.items.map(it => `
+                <div style="display:flex;align-items:center;gap:10px">
+                    <div style="flex:1">${it.text}</div>
+                    <select class="form-input dd-bucket-select" data-item-id="${it.id}" style="max-width:160px">
+                        <option value="">— انتخاب کن —</option>
+                        ${interactive.buckets.map((b, i) => `<option value="${i}">${b}</option>`).join("")}
+                    </select>
+                </div>
+            `).join("")}
+        </div>
+        <form id="submitForm"><div class="modal-footer"><button type="submit" class="primary-btn">ارسال</button><button type="button" class="secondary-btn" onclick="closeModal()">بستن</button></div></form>
+    `;
+}
+function initDragDropBuilder() { /* nothing to wire up -- native <select> elements handle themselves */ }
+function collectDragDropAnswer(interactive) {
+    const selects = document.querySelectorAll(".dd-bucket-select");
+    const placements = [];
+    for (const sel of selects) {
+        if (sel.value === "") return null;
+        placements.push({ item_id: sel.dataset.itemId, bucket_index: Number(sel.value) });
+    }
+    return { placements };
+}
+
+function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+// -- audio recording (MediaRecorder) --
+let __mediaRecorder = null, __recordedChunks = [];
+
+async function toggleRecording() {
+    const btn = document.getElementById("recordBtn");
+    if (__mediaRecorder && __mediaRecorder.state === "recording") {
+        __mediaRecorder.stop();
+        return;
+    }
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        __recordedChunks = [];
+        __mediaRecorder = new MediaRecorder(stream);
+        __mediaRecorder.ondataavailable = (e) => __recordedChunks.push(e.data);
+        __mediaRecorder.onstop = async () => {
+            const blob = new Blob(__recordedChunks, { type: "audio/webm" });
+            const dataUrl = await blobToDataUrl(blob);
+            const form = document.getElementById("submitForm");
+            if (form) form.dataset.answerData = dataUrl;
+            document.getElementById("audioPreview").innerHTML = `<audio controls src="${dataUrl}" style="width:100%"></audio>`;
+            const submitBtn = document.getElementById("submitAudioBtn");
+            if (submitBtn) submitBtn.disabled = false;
+            stream.getTracks().forEach(t => t.stop());
+            btn.textContent = "🎙️ ضبط دوباره";
+        };
+        __mediaRecorder.start();
+        btn.textContent = "⏹️ توقف ضبط";
+        // hard safety cap so a stuck recording can't grow the payload past the server limit
+        setTimeout(() => { if (__mediaRecorder && __mediaRecorder.state === "recording") __mediaRecorder.stop(); }, 15000);
+    } catch (e) {
+        toast("دسترسی به میکروفون ممکن نشد", true);
+    }
+}
+
+function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+/* =========================================================
+   EXAMS
+========================================================= */
+
+async function renderExams() {
+    const [exams, attempts] = await Promise.all([
+        api.get("/api/student/exams"),
+        api.get("/api/student/exam-attempts"),
+    ]);
+    const attemptByExam = new Map(attempts.map(a => [a.exam_id, a]));
+
+    document.getElementById("content").innerHTML = `
+        <div class="page-head"><div><div class="page-title">آزمون‌ها</div><div class="page-subtitle">${exams.length} آزمون فعال</div></div></div>
+        <div class="module"><div class="module-body table-wrap">
+            <table>
+                <thead><tr><th>عنوان</th><th>درس</th><th>مهلت</th><th></th></tr></thead>
+                <tbody>
+                    ${exams.map(e => {
+                        const att = attemptByExam.get(e.id);
+                        return `<tr>
+                            <td>${e.title}</td>
+                            <td>${e.subject_name}</td>
+                            <td>${formatJalaliDateTime(e.end_at)}</td>
+                            <td style="display:flex;gap:6px">
+                                <button class="secondary-btn" onclick="startExam(${e.id})">${att ? "ادامه/شروع دوباره" : "شروع آزمون"}</button>
+                                ${att ? `<button class="secondary-btn" onclick="viewResult(${att.attempt_id})">نتیجه</button>` : ""}
+                            </td>
+                        </tr>`;
+                    }).join("") || `<tr><td colspan="4" style="text-align:center;color:var(--muted)">آزمونی فعال نیست</td></tr>`}
+                </tbody>
+            </table>
+        </div></div>
+
+        <div class="card" style="margin-top:20px">
+            <div class="card-head"><div class="card-title">همه‌ی آزمون‌های گذشته‌ی من</div></div>
+            ${attempts.map(a => `
+                <div class="activity" style="cursor:pointer" onclick="viewResult(${a.attempt_id})">
+                    <div class="activity-icon">📄</div>
+                    <div><div class="activity-text"><b>${a.exam_title}</b> — ${a.subject_name}</div><div class="activity-time">${attemptStatusLabel(a.status)}${a.total_score != null ? ` — نمره: ${a.total_score}/${a.max_score}` : ""}</div></div>
+                </div>
+            `).join("") || `<div class="page-subtitle">هنوز آزمونی نداده‌اید</div>`}
+        </div>
+    `;
+}
+
+function attemptStatusLabel(s) {
+    return { in_progress: "در حال انجام", submitted: "در انتظار تصحیح دستی", graded: "تصحیح‌شده" }[s] || s;
+}
+
+async function startExam(examId) {
+    const start = await withToast(() => api.post("/api/student/exam-attempt", { action: "start", exam_id: examId }));
+    const exam = await api.get(`/api/student/exams?id=${examId}`);
+    openExamRunner(exam, start.attempt_id);
+}
+
+function questionInput(q) {
+    if (q.type === "multiple_choice") {
+        return q.options.map(o => `
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <input type="radio" name="q_${q.id}" value="${o.id}"> ${o.text}
+            </label>
+        `).join("");
+    }
+    if (q.type === "true_false") {
+        return `
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><input type="radio" name="q_${q.id}" value="true"> درست</label>
+            <label style="display:flex;align-items:center;gap:8px"><input type="radio" name="q_${q.id}" value="false"> غلط</label>
+        `;
+    }
+    if (q.type === "numeric") {
+        return `<input class="form-input" name="q_${q.id}" type="number" step="any">`;
+    }
+    return `<textarea class="form-input" name="q_${q.id}" rows="3" style="height:auto;padding:10px 12px"></textarea>`;
+}
+
+function openExamRunner(exam, attemptId) {
+    openModal(exam.title, `
+        <div class="page-subtitle" style="margin-bottom:14px">${exam.description || ""} — مدت: ${exam.duration_minutes} دقیقه</div>
+        <form id="examRunnerForm">
+            ${exam.questions.map((q, i) => `
+                <div class="form-group" style="border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:14px">
+                    <label>${i + 1}. ${q.text}</label>
+                    <div style="margin-top:8px">${questionInput(q)}</div>
+                    <button type="button" class="secondary-btn" style="margin-top:8px" onclick="saveAnswer(${attemptId}, ${q.id}, '${q.type}', this)">ذخیره این پاسخ</button>
+                </div>
+            `).join("")}
+            <div class="modal-footer">
+                <button type="button" class="primary-btn" onclick="submitExam(${attemptId}, ${exam.id})">پایان و ارسال نهایی</button>
+                <button type="button" class="secondary-btn" onclick="closeModal()">بستن (ادامه بعداً)</button>
+            </div>
+        </form>
+    `);
+}
+
+async function saveAnswer(attemptId, questionId, type, btn) {
+    const form = btn.closest("form");
+    const fd = new FormData(form);
+    const raw = fd.get(`q_${questionId}`);
+    const body = { attempt_id: attemptId, question_id: questionId };
+    if (type === "multiple_choice") body.selected_option_id = Number(raw);
+    else if (type === "true_false") body.boolean_answer = raw === "true";
+    else if (type === "numeric") body.numeric_answer = Number(raw);
+    else body.text_answer = raw;
+
+    await withToast(() => api.post("/api/student/exam-attempt", { action: "answer", ...body }), "پاسخ ذخیره شد");
+}
+
+async function submitExam(attemptId, examId) {
+    if (!confirm("بعد از ارسال نهایی دیگر نمی‌توانید پاسخ‌ها را تغییر دهید. مطمئنید؟")) return;
+    await withToast(() => api.post("/api/student/exam-attempt", { action: "submit", attempt_id: attemptId }), "آزمون ارسال شد");
+    closeModal();
+    viewResult(attemptId);
+    renderExams();
+}
+
+async function viewResult(attemptId) {
+    const r = await api.get(`/api/student/exam-result?attempt_id=${attemptId}`);
+    const statusLabel = { in_progress: "در حال انجام", submitted: "در انتظار تصحیح دستی", graded: "تصحیح‌شده" }[r.status] || r.status;
+    openModal("نتیجه آزمون", `
+        <div class="stats" style="grid-template-columns:repeat(2,1fr)">
+            <div class="stat-card"><div class="stat-value">${r.total_score ?? "—"} / ${r.max_score}</div><div class="stat-label">نمره</div></div>
+            <div class="stat-card"><div class="stat-value">${statusLabel}</div><div class="stat-label">وضعیت</div></div>
+            <div class="stat-card"><div class="stat-value">${r.correct_count}</div><div class="stat-label">پاسخ درست</div></div>
+            <div class="stat-card"><div class="stat-value">${r.incorrect_count}</div><div class="stat-label">پاسخ نادرست</div></div>
+        </div>
+        ${r.pending_manual_review > 0 ? `<div class="page-subtitle" style="margin-top:10px">${r.pending_manual_review} پاسخ هنوز نیازمند بررسی دستی معلم است.</div>` : ""}
+        <div class="modal-footer"><button class="secondary-btn" onclick="closeModal()">بستن</button></div>
+    `);
+}
+
+/* =========================================================
+   ATTENDANCE
+========================================================= */
+
+async function renderAttendance() {
+    const { records, summary } = await api.get("/api/student/attendance");
+    const STATUS_LABELS = { present: "حاضر", absent: "غایب", late: "تأخیر", excused: "موجه" };
+    const STATUS_COLORS = { present: "green", absent: "red", late: "orange", excused: "orange" };
+
+    document.getElementById("content").innerHTML = `
+        <div class="page-head"><div><div class="page-title">حضور و غیاب</div><div class="page-subtitle">سابقه‌ی کامل</div></div></div>
+        <div class="stats">
+            <div class="stat-card"><div class="stat-value">${summary.present || 0}</div><div class="stat-label">حاضر</div></div>
+            <div class="stat-card"><div class="stat-value">${summary.absent || 0}</div><div class="stat-label">غایب</div></div>
+            <div class="stat-card"><div class="stat-value">${summary.late || 0}</div><div class="stat-label">تأخیر</div></div>
+            <div class="stat-card"><div class="stat-value">${summary.excused || 0}</div><div class="stat-label">موجه</div></div>
+        </div>
+        <div class="module"><div class="module-body table-wrap">
+            <table>
+                <thead><tr><th>تاریخ</th><th>وضعیت</th></tr></thead>
+                <tbody>
+                    ${records.map(r => `<tr><td>${formatJalaliDate(r.session_date)}</td><td><span class="status ${STATUS_COLORS[r.status]}">${STATUS_LABELS[r.status]}</span></td></tr>`).join("") || `<tr><td colspan="2" style="text-align:center;color:var(--muted)">رکوردی ثبت نشده</td></tr>`}
+                </tbody>
+            </table>
+        </div></div>
+    `;
+}
+
+/* =========================================================
+   GRADES / REPORT CARD
+========================================================= */
+
+async function renderGrades() {
+    const report = await api.get("/api/student/report-card");
+
+    window.__lastReportCard = report; // used by printReportCard()
+
+    document.getElementById("content").innerHTML = `
+        <div class="page-head">
+            <div><div class="page-title">کارنامه</div><div class="page-subtitle">${report.period ? report.period.name || "دوره‌ی جاری" : "بدون دوره‌ی نمره‌دهی ثبت‌شده"}</div></div>
+            <button class="secondary-btn" onclick="printReportCard()">🖨️ چاپ / خروجی PDF</button>
+        </div>
+        <div class="stats" style="grid-template-columns:repeat(1,1fr);max-width:260px">
+            <div class="stat-card"><div class="stat-value">${report.overall_average ?? "—"}</div><div class="stat-label">میانگین کل</div></div>
+        </div>
+        ${report.subjects.map(s => `
+            <div class="card" style="margin-bottom:14px">
+                <div class="card-head"><div class="card-title">${s.subject_name}</div><span class="status green">میانگین: ${s.average ?? "—"}</span></div>
+                <div class="table-wrap"><table>
+                    <thead><tr><th>منبع</th><th>نمره</th><th>بازخورد</th></tr></thead>
+                    <tbody>${s.entries.map(e => `<tr><td>${e.source}</td><td>${e.score} / ${e.max_score}</td><td>${e.feedback || "—"}</td></tr>`).join("")}</tbody>
+                </table></div>
+            </div>
+        `).join("") || `<div class="card"><div class="page-subtitle">نمره‌ای ثبت نشده</div></div>`}
+    `;
+}
+
+// Print-to-PDF via the browser's own print dialog -- no JS PDF library needed,
+// and it handles Persian/RTL shaping correctly (a JS PDF lib often doesn't).
+function printReportCard() {
+    const report = window.__lastReportCard;
+    if (!report) return;
+    const win = window.open("", "_blank");
+    win.document.write(`
+        <html dir="rtl" lang="fa"><head><meta charset="utf-8">
+        <title>کارنامه</title>
+        <style>
+            body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 30px; }
+            h1 { font-size: 20px; margin-bottom: 4px; }
+            h2 { font-size: 13px; color: #555; font-weight: normal; margin-top: 0; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+            th, td { border: 1px solid #ccc; padding: 6px 10px; font-size: 13px; text-align: right; }
+            th { background: #f2f2f2; }
+            .avg { font-size: 15px; font-weight: bold; margin: 14px 0; }
+        </style></head><body>
+        <h1>کارنامه</h1>
+        <h2>${report.period ? report.period.name || "دوره‌ی جاری" : "بدون دوره‌ی نمره‌دهی"}</h2>
+        <div class="avg">میانگین کل: ${report.overall_average ?? "—"}</div>
+        ${report.subjects.map(s => `
+            <h3>${s.subject_name} — میانگین: ${s.average ?? "—"}</h3>
+            <table>
+                <thead><tr><th>منبع</th><th>نمره</th><th>بازخورد</th></tr></thead>
+                <tbody>${s.entries.map(e => `<tr><td>${e.source}</td><td>${e.score} / ${e.max_score}</td><td>${e.feedback || "—"}</td></tr>`).join("")}</tbody>
+            </table>
+        `).join("")}
+        </body></html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 300);
+}
+
+/* =========================================================
+   MESSAGES (reply-only -- students have no lookup endpoint to
+   find another user to start a NEW conversation with; they can
+   only participate in conversations a teacher/admin already
+   added them to)
+========================================================= */
+
+async function renderMessages() {
+    const conversations = await api.get("/api/messages/conversations");
+    document.getElementById("content").innerHTML = `
+        <div class="page-head"><div><div class="page-title">پیام‌ها</div><div class="page-subtitle">${conversations.length} گفتگو</div></div></div>
+        <div class="module"><div class="module-body">
+            ${conversations.map(c => `
+                <div class="activity" style="cursor:pointer" onclick="openConversation(${c.id}, '${(c.title || "گفتگو").replace(/'/g, "")}')">
+                    <div class="activity-icon">💬</div>
+                    <div><div class="activity-text"><b>${c.title || "گفتگو"}</b></div><div class="activity-time">${c.last_message || "پیامی ارسال نشده"}</div></div>
+                </div>
+            `).join("") || `<div class="page-subtitle">گفتگویی وجود ندارد — معلم یا مدیر باید ابتدا گفتگو را شروع کند</div>`}
+        </div></div>
+    `;
+}
+
+async function openConversation(id, title) {
+    const messages = await api.get(`/api/messages/messages?conversation_id=${id}`);
+    openModal(title, `
+        <div style="max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+            ${messages.map(m => `<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:12px"><b>${m.sender_name || "کاربر"}</b><div style="margin-top:4px">${m.body}</div></div>`).join("") || `<div class="page-subtitle">پیامی وجود ندارد</div>`}
+        </div>
+        <form id="replyForm">
+            <div class="form-group"><input class="form-input" name="body" placeholder="پیام..." required></div>
+            <div class="modal-footer"><button type="submit" class="primary-btn">ارسال</button><button type="button" class="secondary-btn" onclick="closeModal()">بستن</button></div>
+        </form>
+    `);
+    document.getElementById("replyForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        await withToast(() => api.post("/api/messages/messages", { conversation_id: id, body: fd.get("body") }));
+        openConversation(id, title);
+    });
+}
+
+/* =========================================================
+   ANNOUNCEMENTS
+========================================================= */
+
+async function renderAnnouncements() {
+    const announcements = await api.get("/api/announcements");
+    document.getElementById("content").innerHTML = `
+        <div class="page-head"><div><div class="page-title">اطلاعیه‌ها</div><div class="page-subtitle">${announcements.length} اطلاعیه</div></div></div>
+        ${announcements.map(a => `
+            <div class="card" style="margin-bottom:14px">
+                <div class="card-head"><div class="card-title">${a.title}</div></div>
+                <div class="page-subtitle" style="margin-bottom:8px">${a.author_name} — ${formatJalaliDate(a.created_at)}</div>
+                <div style="font-size:13px;line-height:1.9">${a.body}</div>
+            </div>
+        `).join("") || `<div class="card"><div class="page-subtitle">اطلاعیه‌ای ثبت نشده</div></div>`}
+    `;
+}
+
+/* =========================================================
+   PROFILE (read-only -- from the logged-in session, no API for editing)
+========================================================= */
+
+async function renderProfile() {
+    const user = currentSession.user;
+    document.getElementById("content").innerHTML = `
+        <div class="page-head"><div><div class="page-title">پروفایل</div><div class="page-subtitle">اطلاعات حساب کاربری</div></div></div>
+        <div class="card" style="max-width:400px">
+            <div class="form-group"><label>نام کامل</label><div>${user.full_name}</div></div>
+            <div class="form-group"><label>شناسه مدرسه</label><div>${user.school_id}</div></div>
+        </div>
+        <div class="page-subtitle" style="margin-top:10px">اطلاعات بیشتر (نام کاربری، تلفن و ...) و امکان ویرایش پروفایل هنوز در API وجود ندارد.</div>
+    `;
+}
+
+/* =========================================================
+   INIT
+========================================================= */
+
+(async function () {
+    const session = initShell("student");
+    if (!session) return;
+
+    try {
+        const me = await api.get("/api/student/me");
+        if (me.education_level === "elementary") document.body.classList.add("elementary-mode");
+    } catch {
+        // theme is cosmetic only -- never block the dashboard if this call fails
+    }
+
+    renderNav(NAV_ITEMS, "dashboard");
+    render("dashboard");
+})();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+/* core.css — reset, design tokens, base typography, buttons/inputs */
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap');
+
+:root{
+    --bg:#f5f7fb;
+    --surface:#fff;
+    --surface2:#f8fafc;
+    --text:#172033;
+    --muted:#7b8497;
+    --line:#e8ecf3;
+    --primary:#5b5ce2;
+    --primary-soft:#eeefff;
+    --green:#20b486;
+    --green-soft:#e9faf4;
+    --orange:#f59e0b;
+    --orange-soft:#fff6df;
+    --red:#ef5350;
+    --red-soft:#ffeded;
+    --shadow:0 8px 30px rgba(28,35,60,.06);
+    --radius:18px;
+}
+
+*{
+    box-sizing:border-box;
+    margin:0;
+    padding:0;
+}
+
+body{
+    font-family:Vazirmatn,Tahoma,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+}
+
+button,input{
+    font-family:inherit;
+}
+
+button{
+    cursor:pointer;
+}
+
+.app{
+    min-height:100vh;
+    display:flex;
+}
+
