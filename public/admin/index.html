@@ -126,11 +126,14 @@ async function render(key) {
 ========================================================= */
 
 async function renderDashboard() {
-    const [students, classes, announcements] = await Promise.all([
+    let [students, classes, announcements] = await Promise.all([
         api.get("/api/admin/students").catch(() => []),
         api.get("/api/admin/classes").catch(() => []),
         api.get("/api/announcements").catch(() => []),
     ]);
+    // A resolved (non-throwing) call can still come back with data:null --
+    // .catch() above only guards against rejections, not that case.
+    students = students || []; classes = classes || []; announcements = announcements || [];
     cache.students = students; cache.classes = classes; cache.announcements = announcements;
 
     const activeStudents = students.filter(s => s.is_active).length;

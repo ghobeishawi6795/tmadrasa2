@@ -591,7 +591,10 @@ async function renderQuestions() {
     document.getElementById("content").innerHTML = `
         <div class="page-head">
             <div><div class="page-title">بانک سؤال</div><div class="page-subtitle">${questions.length} سؤال</div></div>
-            <button class="primary-btn" onclick="openQuestionForm()">+ سؤال جدید</button>
+            <div style="display:flex;gap:8px">
+                <button class="secondary-btn" onclick="openImportHtmlForm()">📥 وارد کردن از HTML</button>
+                <button class="primary-btn" onclick="openQuestionForm()">+ سؤال جدید</button>
+            </div>
         </div>
         <div class="module"><div class="module-body table-wrap">
             <table>
@@ -612,6 +615,66 @@ async function renderQuestions() {
 
 function questionTypeLabel(t) {
     return { multiple_choice: "چندگزینه‌ای", true_false: "درست/غلط", numeric: "عددی", short_answer: "پاسخ کوتاه", long_answer: "تشریحی" }[t] || t;
+}
+
+/* =========================================================
+   IMPORT FROM HTML — bulk-add exam questions + assignments from
+   the fixed AI-generated template (docs/راهنمای-وارد-کردن-html.md)
+========================================================= */
+async function openImportHtmlForm() {
+    const classes = (cache.classes && cache.classes.length ? cache.classes : await api.get("/api/teacher/classes")) || [];
+    cache.classes = classes;
+    const uniqueClasses = [...new Map(classes.map(c => [c.class_id, c])).values()];
+
+    openModal("وارد کردن سؤال/تکلیف از HTML", `
+        <div class="page-subtitle" style="margin-bottom:12px;line-height:1.9">
+            فایل HTML‌ای که با کمک هوش مصنوعی و طبق قالب مشخص‌شده ساختی رو انتخاب کن.
+            اگه فایل شامل تکلیف هم باشه، باید کلاس مقصدش رو مشخص کنی (سؤال‌های بانک آزمون به کلاس خاصی نیاز ندارن).
+        </div>
+        <div class="form-group">
+            <label>فایل HTML</label>
+            <input type="file" id="importHtmlFile" accept=".html,.htm,text/html" class="form-input">
+        </div>
+        <div class="form-group">
+            <label>کلاس مقصد (فقط برای تکلیف‌های داخل فایل)</label>
+            <select id="importHtmlClass" class="form-input">
+                <option value="">— انتخاب نشده —</option>
+                ${uniqueClasses.map(c => `<option value="${c.class_id}">${c.class_name}</option>`).join("")}
+            </select>
+        </div>
+        <div id="importHtmlResult"></div>
+        <button class="primary-btn" style="margin-top:10px" onclick="submitImportHtml()">وارد کردن</button>
+    `);
+}
+
+function submitImportHtml() {
+    const fileInput = document.getElementById("importHtmlFile");
+    const file = fileInput.files[0];
+    if (!file) { toast("یک فایل HTML انتخاب کن", true); return; }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+        const class_id = document.getElementById("importHtmlClass").value;
+        const resultBox = document.getElementById("importHtmlResult");
+        resultBox.innerHTML = `<div class="page-subtitle">در حال بررسی و ثبت...</div>`;
+        try {
+            const body = { html: reader.result };
+            if (class_id) body.class_id = Number(class_id);
+            const res = await api.post("/api/teacher/import-html", body);
+            let html = `<div class="page-subtitle" style="color:var(--green,#1a9e5c);margin-top:8px">${res.imported} مورد با موفقیت اضافه شد.</div>`;
+            if (res.skipped && res.skipped.length) {
+                html += `<div class="page-subtitle" style="margin-top:8px">موارد رد شده:</div>
+                    <ul style="margin:6px 0 0;padding-inline-start:20px;font-size:13px;color:var(--muted)">
+                        ${res.skipped.map(s => `<li>مورد شماره ${s.index + 1}: ${s.reason}</li>`).join("")}
+                    </ul>`;
+            }
+            resultBox.innerHTML = html;
+            cache.questions = null; cache.assignments = null;
+        } catch (e) {
+            resultBox.innerHTML = `<div class="page-subtitle" style="color:var(--red)">${e.message}</div>`;
+        }
+    };
+    reader.readAsText(file, "UTF-8");
 }
 
 function openQuestionForm() {
