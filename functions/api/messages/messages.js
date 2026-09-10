@@ -70,6 +70,8 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     const body = await readJson(request);
     requireFields(body, ["id", "body"]);
     requireMaxLength(body.body, 5000, "متن پیام");
+
+    const message = await db.first(`SELECT * FROM messages WHERE id = ?`, body.id);
     if (!message || message.deleted_at) throw errors.notFound("پیام پیدا نشد");
     if (message.sender_id !== user.id) throw errors.forbidden("فقط نویسنده پیام می‌تواند آن را ویرایش کند");
 

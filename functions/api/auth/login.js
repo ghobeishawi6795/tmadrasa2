@@ -52,6 +52,15 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     }
     if (!user.is_active) throw errors.forbidden("حساب کاربری غیرفعال است");
 
+    // A school can be deactivated by the super-admin -- that must lock out
+    // every user of that school, not just accounts individually disabled.
+    // school_id 0 is the reserved super-admin system school (always
+    // active:0 by design) and is exempt from this check.
+    if (user.school_id !== 0) {
+        const school = await db.first(`SELECT active FROM schools WHERE id = ?`, user.school_id);
+        if (!school || !school.active) throw errors.forbidden("مدرسه غیرفعال شده است");
+    }
+
     const { token, expiresAt } = await createSession(env, user, request);
 
     await writeAudit(env, {

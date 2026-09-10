@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>پنل سوپرادمین | مدرسه</title>
+<link rel="stylesheet" href="../assets/css/core.css">
+<link rel="stylesheet" href="../assets/css/layout.css">
+<link rel="stylesheet" href="../assets/css/components.css">
+<link rel="stylesheet" href="../assets/css/responsive.css">
+</head>
+<body>
+
+<div class="app">
+
+<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileNav()"></div>
+<aside class="sidebar" id="sidebar">
+    <div class="logo">
+        <div class="logo-icon">م</div>
+        <div><strong>مدرسه</strong><span>سوپرادمین</span></div>
+    </div>
+
+    <div class="role-box">
+        <div class="role-label">محیط فعلی</div>
+        <div class="role-name" id="roleName">سوپرادمین</div>
+    </div>
+
+    <nav class="nav" id="nav"></nav>
+
+</aside>
+
+<main class="main">
+    <header class="topbar">
+        <div class="top-left">
+            <button class="mobile-menu" onclick="toggleMobileNav()">☰</button>
+        </div>
+        <div class="top-right">
+            <div class="profile">
+                <div class="avatar" id="avatar">س</div>
+                <div>
+                    <div class="profile-name" id="profileName">—</div>
+                    <div class="profile-role" id="profileRole">—</div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <section class="content" id="content"></section>
+</main>
+
+</div>
+
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+    <div class="modal" id="modalBox">
+        <div class="modal-head">
+            <div class="modal-title" id="modalTitle">عنوان</div>
+            <button class="close" onclick="closeModal()">×</button>
+        </div>
+        <div id="modalContent"></div>
+    </div>
+</div>
+
+<script src="../assets/js/jalali.js"></script>
+<script src="../assets/js/api.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/navigation.js"></script>
+<script src="../assets/js/modal.js"></script>
+
+<script>
+
+/* =========================================================
+   NAV CONFIG
+========================================================= */
+
+const NAV_ITEMS = [
+    { key: "dashboard", icon: "🏠", label: "داشبورد" },
+    { key: "schools",   icon: "🏫", label: "مدرسه‌ها" },
+    { key: "messages",  icon: "💬", label: "پیام‌ها" },
+    { key: "help",      icon: "❓", label: "راهنما" },
+];
+
+let cache = { schools: null, conversations: null };
+
+function navigate(key) {
+    setActiveNav(key);
+    render(key);
+}
+
+async function render(key) {
+    const content = document.getElementById("content");
+    content.innerHTML = `<div style="padding:60px;text-align:center;color:var(--muted)">در حال بارگذاری...</div>`;
+    try {
+        if (key === "dashboard") await renderDashboard();
+        else if (key === "schools") await renderSchools();
+        else if (key === "messages") await renderMessages();
+        else if (key === "help") renderHelp();
+    } catch (e) {
+        content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${escapeHtml(e.message)}</div></div>`;
+    }
+}
+
+/* =========================================================
+   DASHBOARD
+========================================================= */
+
+async function loadSchools() {
+    if (!cache.schools) cache.schools = await api.get("/api/superadmin/schools");
+    return cache.schools;
+}
+
+async function renderDashboard() {
+    const schools = await loadSchools();
+    const totals = schools.reduce((acc, s) => {
+        acc.students += s.student_count;
+        acc.teachers += s.teacher_count;
+        acc.parents += s.parent_count;
+        acc.admins += s.admin_count;
+        if (s.active) acc.active++; else acc.inactive++;
+        return acc;
+    }, { students: 0, teachers: 0, parents: 0, admins: 0, active: 0, inactive: 0 });
+
+    document.getElementById("content").innerHTML = `
+        <div class="page-head"><div><div class="page-title">داشبورد سوپرادمین</div><div class="page-subtitle">نمای کلی همه‌ی مدرسه‌های پلتفرم</div></div></div>
+
+        <div class="stats">
+            <div class="stat-card"><div class="stat-top"><div class="stat-icon">🏫</div></div><div class="stat-value">${schools.length}</div><div class="stat-label">مدرسه</div></div>
+            <div class="stat-card"><div class="stat-top"><div class="stat-icon">🟢</div></div><div class="stat-value">${totals.active}</div><div class="stat-label">فعال</div></div>
+            <div class="stat-card"><div class="stat-top"><div class="stat-icon">🔴</div></div><div class="stat-value">${totals.inactive}</div><div class="stat-label">غیرفعال</div></div>
+            <div class="stat-card"><div class="stat-top"><div class="stat-icon">🎓</div></div><div class="stat-value">${totals.students}</div><div class="stat-label">دانش‌آموز</div></div>
+            <div class="stat-card"><div class="stat-top"><div class="stat-icon">👨‍🏫</div></div><div class="stat-value">${totals.teachers}</div><div class="stat-label">معلم</div></div>
+            <div class="stat-card"><div class="stat-top"><div class="stat-icon">👪</div></div><div class="stat-value">${totals.parents}</div><div class="stat-label">والد</div></div>
+        </div>
+
+        <div class="page-head" style="margin-top:24px"><div><div class="page-title" style="font-size:16px">مدرسه‌ها</div></div></div>
+        <div class="module">
+            <div class="module-body">
+                ${schools.slice(0, 8).map(s => `
+                    <div class="activity">
+                        <div class="activity-icon">${s.active ? "🟢" : "🔴"}</div>
+                        <div>
+                            <div class="activity-text"><b>${escapeHtml(s.name)}</b></div>
+                            <div class="activity-time">${s.student_count} دانش‌آموز، ${s.teacher_count} معلم</div>
+                        </div>
+                    </div>
+                `).join("") || `<div class="page-subtitle">هنوز مدرسه‌ای ثبت نشده</div>`}
+            </div>
+        </div>
+    `;
+}
+
+/* =========================================================
+   SCHOOLS
+========================================================= */
+
+async function renderSchools() {
+    cache.schools = null; // always re-fetch fresh here (this is the management screen)
+    const schools = await loadSchools();
+
+    document.getElementById("content").innerHTML = `
+        <div class="page-head">
+            <div><div class="page-title">مدرسه‌ها</div><div class="page-subtitle">${schools.length} مدرسه</div></div>
+            <button class="primary-btn" onclick="openSchoolForm()">+ مدرسه جدید</button>
+        </div>
+
+        <div class="table-wrap"><table>
+            <thead><tr><th>نام</th><th>دانش‌آموز</th><th>معلم</th><th>والد</th><th>مدیر</th><th>آخرین ورود موفق</th><th>وضعیت</th><th></th></tr></thead>
+            <tbody>
+                ${schools.map(s => `
+                    <tr>
+                        <td>${escapeHtml(s.name)}</td>
+                        <td>${s.student_count}</td>
+                        <td>${s.teacher_count}</td>
+                        <td>${s.parent_count}</td>
+                        <td>${s.admin_count}</td>
+                        <td>${s.last_login_at ? formatJalaliDateTime(s.last_login_at) : "—"}</td>
+                        <td><span class="status ${s.active ? "green" : "red"}">${s.active ? "فعال" : "غیرفعال"}</span></td>
+                        <td>
+                            <button class="secondary-btn" onclick="toggleSchoolActive(${s.id}, ${s.active ? "false" : "true"})">${s.active ? "غیرفعال کن" : "فعال کن"}</button>
+                            <button class="secondary-btn" onclick="openMessageForm(${s.id}, ${escapeAttr(s.name)})">پیام</button>
+                        </td>
+                    </tr>
+                `).join("") || `<tr><td colspan="8" style="text-align:center;color:var(--muted)">مدرسه‌ای ثبت نشده</td></tr>`}
+            </tbody>
+        </table></div>
+    `;
+}
+
+function openSchoolForm() {
+    openModal("مدرسه جدید", `
+        <form id="schoolForm">
+            <div class="form-group"><label>نام مدرسه</label><input class="form-input" name="name" required></div>
+            <div class="form-group"><label>تلفن (اختیاری)</label><input class="form-input" name="phone"></div>
+            <div class="form-group"><label>آدرس (اختیاری)</label><input class="form-input" name="address"></div>
+            <div class="modal-footer">
+                <button type="submit" class="primary-btn">ساخت</button>
+                <button type="button" class="secondary-btn" onclick="closeModal()">انصراف</button>
+            </div>
+        </form>
+    `);
+
+    document.getElementById("schoolForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        await withToast(() => api.post("/api/superadmin/schools", {
+            name: fd.get("name"), phone: fd.get("phone") || null, address: fd.get("address") || null,
+        }));
+        closeModal();
+        renderSchools();
+    });
+}
+
+async function toggleSchoolActive(id, active) {
+    await withToast(() => api.patch("/api/superadmin/schools", { id, active }));
+    renderSchools();
+}
+
+/* =========================================================
+   MESSAGES
+========================================================= */
+
+async function renderMessages() {
+    const conversations = await api.get("/api/superadmin/messages");
+    cache.conversations = conversations;
+
+    document.getElementById("content").innerHTML = `
+        <div class="page-head">
+            <div><div class="page-title">پیام‌ها</div><div class="page-subtitle">گفتگو با مدیر هر مدرسه</div></div>
+        </div>
+
+        <div class="module">
+            <div class="module-body">
+                ${conversations.map(c => `
+                    <div class="activity" style="cursor:pointer" onclick="openConversation(${c.id}, ${escapeAttr(c.school_name)})">
+                        <div class="activity-icon">💬</div>
+                        <div>
+                            <div class="activity-text"><b>${escapeHtml(c.school_name)}</b></div>
+                            <div class="activity-time">${escapeHtml(c.last_message || "پیامی ارسال نشده")}</div>
+                        </div>
+                    </div>
+                `).join("") || `<div class="page-subtitle">گفتگویی وجود ندارد — از صفحه‌ی «مدرسه‌ها» دکمه‌ی «پیام» را بزن</div>`}
+            </div>
+        </div>
+    `;
+}
+
+async function openConversation(id, title) {
+    const messages = await api.get(`/api/messages/messages?conversation_id=${id}`);
+    openModal(title, `
+        <div style="max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+            ${messages.map(m => `
+                <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:12px">
+                    <b>${escapeHtml(m.sender_name || "کاربر")}</b><div style="margin-top:4px">${escapeHtml(m.body)}</div>
+                </div>
+            `).join("") || `<div class="page-subtitle">پیامی وجود ندارد</div>`}
+        </div>
+        <form id="replyForm">
+            <div class="form-group"><input class="form-input" name="body" placeholder="پیام..." required></div>
+            <div class="modal-footer">
+                <button type="submit" class="primary-btn">ارسال</button>
+                <button type="button" class="secondary-btn" onclick="closeModal()">بستن</button>
+            </div>
+        </form>
+    `);
+
+    document.getElementById("replyForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        await withToast(() => api.post("/api/messages/messages", { conversation_id: id, body: fd.get("body") }));
+        openConversation(id, title);
+    });
+}
+
+function openMessageForm(schoolId, schoolName) {
+    openModal(`پیام به ${schoolName}`, `
+        <form id="newMessageForm">
+            <div class="form-group"><label>متن پیام</label><textarea class="form-input" name="body" rows="3" style="height:auto;padding:10px 12px" required></textarea></div>
+            <div class="modal-footer">
+                <button type="submit" class="primary-btn">ارسال</button>
+                <button type="button" class="secondary-btn" onclick="closeModal()">انصراف</button>
+            </div>
+        </form>
+    `);
+
+    document.getElementById("newMessageForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        await withToast(() => api.post("/api/superadmin/messages", { school_id: schoolId, body: fd.get("body") }));
+        closeModal();
+        toast("پیام ارسال شد");
+    });
+}
+
+/* =========================================================
+   HELP / GUIDE
+========================================================= */
+
+const HELP_SECTIONS = [
+    { icon: "🏠", title: "داشبورد", body: "نمای کلی همه‌ی مدرسه‌های ثبت‌شده تو پلتفرم: تعداد کل مدرسه‌ها، فعال/غیرفعال، و مجموع دانش‌آموز/معلم/والد در همه‌ی آن‌ها." },
+    { icon: "🏫", title: "مدرسه‌ها", body: "فهرست کامل مدرسه‌ها با تعداد دانش‌آموز/معلم/والد/مدیر هرکدام و آخرین زمان ورود موفق به آن مدرسه. از همینجا می‌شود یک مدرسه‌ی جدید (خالی) ساخت، یا یک مدرسه‌ی موجود را فعال/غیرفعال کرد — غیرفعال کردن یعنی هیچ‌کدام از کاربران آن مدرسه (مدیر/معلم/دانش‌آموز/والد) دیگر نمی‌توانند وارد شوند." },
+    { icon: "💬", title: "پیام‌ها", body: "گفتگوی مستقیم با مدیر هر مدرسه — پیام از دکمه‌ی «پیام» کنار هر مدرسه در صفحه‌ی «مدرسه‌ها» شروع می‌شود. مدیر همان مدرسه این پیام را در صفحه‌ی «پیام‌ها»ی داشبورد خودش می‌بیند و می‌تواند پاسخ بدهد." },
+];
+
+function renderHelp() {
+    document.getElementById("content").innerHTML = `
+        <div class="page-head"><div><div class="page-title">راهنما</div><div class="page-subtitle">توضیح کامل امکانات پنل سوپرادمین</div></div></div>
+        ${HELP_SECTIONS.map(s => `
+            <div class="card" style="margin-bottom:12px">
+                <div class="card-head"><div class="card-title">${s.icon} ${escapeHtml(s.title)}</div></div>
+                <div class="page-subtitle" style="line-height:1.9">${escapeHtml(s.body)}</div>
+            </div>
+        `).join("")}
+    `;
+}
+
+/* =========================================================
+   INIT
+========================================================= */
+
+(function () {
+    const session = initShell("super_admin");
+    if (!session) return;
+
+    renderNav(NAV_ITEMS, "dashboard");
+    render("dashboard");
+})();
+
+</script>
+</body>
+</html>

@@ -44,6 +44,13 @@ const ROLE_LABELS = {
     teacher: "معلم",
     student: "دانش‌آموز",
     parent: "والد",
+    super_admin: "سوپرادمین",
+};
+
+// role key -> URL folder name (only super_admin differs, folder is "superadmin")
+const ROLE_FOLDERS = {
+    admin: "admin", teacher: "teacher", student: "student", parent: "parent",
+    super_admin: "superadmin",
 };
 
 /**
@@ -53,15 +60,27 @@ const ROLE_LABELS = {
  * @param {string} expectedRole "admin" | "teacher" | "student" | "parent"
  */
 function initShell(expectedRole) {
-    currentSession = requireAuth();
-    if (!currentSession) return null; // already redirected
+    // The super-admin area has its own dedicated login page (no school-id
+    // field, since a super-admin isn't attached to any real school) --
+    // don't bounce it through the generic /login.html like the other 4 roles.
+    if (expectedRole === "super_admin") {
+        const session = getSession();
+        if (!session || !session.token) {
+            window.location.href = "/superadmin/login.html";
+            return null;
+        }
+        currentSession = session;
+    } else {
+        currentSession = requireAuth();
+        if (!currentSession) return null; // already redirected
+    }
 
     const roles = currentSession.roles || [];
     if (!roles.includes(expectedRole)) {
         // logged in, but with a different role -- send them to their own area
-        const known = ["admin", "teacher", "student", "parent"];
+        const known = ["admin", "teacher", "student", "parent", "super_admin"];
         const theirRole = roles.find(r => known.includes(r)) || "student";
-        window.location.href = `/${theirRole}/index.html`;
+        window.location.href = `/${ROLE_FOLDERS[theirRole] || theirRole}/index.html`;
         return null;
     }
 

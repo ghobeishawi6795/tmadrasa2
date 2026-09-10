@@ -914,6 +914,14 @@ async function renderMessages() {
     const conversations = await api.get("/api/messages/conversations");
     cache.conversations = conversations;
 
+    // The super-admin's messages to this school arrive as a 'group'
+    // conversation internally titled "__superadmin__" (see
+    // /api/superadmin/messages) -- show it with a friendly label instead
+    // of the raw internal marker.
+    const labelOf = (c) => c.title === "__superadmin__"
+        ? "پیام از هدف (سوپرادمین)"
+        : (c.title || (c.type === "direct" ? "گفتگوی مستقیم" : "گروه"));
+
     document.getElementById("content").innerHTML = `
         <div class="page-head">
             <div>
@@ -926,10 +934,10 @@ async function renderMessages() {
         <div class="module">
             <div class="module-body">
                 ${conversations.map(c => `
-                    <div class="activity" style="cursor:pointer" onclick="openConversation(${c.id}, ${escapeAttr(c.title || "گفتگو")})">
+                    <div class="activity" style="cursor:pointer" onclick="openConversation(${c.id}, ${escapeAttr(labelOf(c))})">
                         <div class="activity-icon">💬</div>
                         <div>
-                            <div class="activity-text"><b>${escapeHtml(c.title || (c.type === "direct" ? "گفتگوی مستقیم" : "گروه"))}</b></div>
+                            <div class="activity-text"><b>${escapeHtml(labelOf(c))}</b></div>
                             <div class="activity-time">${escapeHtml(c.last_message || "پیامی ارسال نشده")}</div>
                         </div>
                     </div>

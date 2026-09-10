@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>ورود | مدرسه</title>
+<title>ورود سوپرادمین | مدرسه</title>
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap');
 
 :root{
-    --bg:#f5f7fb;
+    --bg:#12142b;
     --surface:#fff;
     --surface2:#f8fafc;
     --text:#172033;
@@ -56,7 +56,7 @@ body{
     width:42px;
     height:42px;
     border-radius:12px;
-    background:var(--primary);
+    background:#12142b;
     color:#fff;
     display:flex;
     align-items:center;
@@ -94,10 +94,7 @@ input{
 
 input:focus{ border-color:var(--primary); }
 
-button{
-    font-family:inherit;
-    cursor:pointer;
-}
+button{ font-family:inherit; cursor:pointer; }
 
 .submit-btn{
     width:100%;
@@ -105,7 +102,7 @@ button{
     padding:12px;
     border:none;
     border-radius:12px;
-    background:var(--primary);
+    background:#12142b;
     color:#fff;
     font-size:15px;
     font-weight:600;
@@ -123,13 +120,6 @@ button{
     font-size:13px;
     line-height:1.7;
 }
-
-.hint{
-    margin-top:18px;
-    font-size:12px;
-    color:var(--muted);
-    line-height:1.8;
-}
 </style>
 </head>
 <body>
@@ -139,17 +129,14 @@ button{
         <div class="logo-icon">م</div>
         <div>
             <strong>مدرسه</strong>
-            <span>School Platform</span>
+            <span>پنل سوپرادمین</span>
         </div>
     </div>
 
-    <h1>ورود به حساب کاربری</h1>
-    <div class="subtitle">اطلاعات ورود خود را وارد کنید</div>
+    <h1>ورود سوپرادمین</h1>
+    <div class="subtitle">مدیریت کل پلتفرم — همه‌ی مدرسه‌ها</div>
 
     <form id="loginForm">
-        <label for="schoolId">شناسه مدرسه</label>
-        <input type="number" id="schoolId" inputmode="numeric" required autocomplete="off">
-
         <label for="username">نام کاربری</label>
         <input type="text" id="username" required autocomplete="username">
 
@@ -160,31 +147,24 @@ button{
 
         <div class="error-box" id="errorBox"></div>
     </form>
-
-    <div class="hint">شناسه مدرسه را از مدیر سیستم خود دریافت کنید.</div>
 </div>
 
-<script src="assets/js/api.js"></script>
+<script src="../assets/js/api.js"></script>
 <script>
-// If already logged in with a still-valid-looking session, skip straight to the dashboard.
+// Super-admin accounts live under the reserved system school (id 0) --
+// this page never shows a school-id field, it's always 0 here.
+const SYSTEM_SCHOOL_ID = 0;
+
 (function () {
     const session = getSession();
-    if (session && session.token) {
-        window.location.href = roleHome(session.roles);
+    if (session && session.token && (session.roles || []).includes("super_admin")) {
+        window.location.href = "index.html";
     }
 })();
-
-function roleHome(roles) {
-    const folders = { admin: "admin", teacher: "teacher", student: "student", parent: "parent", super_admin: "superadmin" };
-    const known = Object.keys(folders);
-    const role = (roles || []).find(r => known.includes(r)) || "student";
-    return `/${folders[role]}/index.html`;
-}
 
 document.getElementById("loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const schoolId = document.getElementById("schoolId").value;
     const username = document.getElementById("username").value.trim();
     const password = document.getElementById("password").value;
     const btn = document.getElementById("submitBtn");
@@ -195,8 +175,12 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
     btn.textContent = "در حال ورود...";
 
     try {
-        const data = await login(schoolId, username, password);
-        window.location.href = roleHome(data.roles);
+        const data = await login(SYSTEM_SCHOOL_ID, username, password);
+        if (!(data.roles || []).includes("super_admin")) {
+            clearSession();
+            throw new Error("این حساب دسترسی سوپرادمین ندارد");
+        }
+        window.location.href = "index.html";
     } catch (err) {
         errorBox.textContent = err.message || "ورود ناموفق بود";
         errorBox.style.display = "block";

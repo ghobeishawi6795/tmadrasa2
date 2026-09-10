@@ -8,9 +8,9 @@
     if (!session || !session.token) {
         window.location.href = "/login.html";
     } else {
-        const known = ["admin", "teacher", "student", "parent"];
-        const role = (session.roles || []).find(r => known.includes(r)) || "student";
-        window.location.href = `/${role}/index.html`;
+        const folders = { admin: "admin", teacher: "teacher", student: "student", parent: "parent", super_admin: "superadmin" };
+        const role = (session.roles || []).find(r => Object.keys(folders).includes(r)) || "student";
+        window.location.href = `/${folders[role]}/index.html`;
     }
 </script>
 </body>

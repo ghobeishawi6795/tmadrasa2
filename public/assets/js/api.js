@@ -45,6 +45,11 @@ function requireAuth() {
     return session;
 }
 
+/** Path to the right login page for a given session's roles -- the super-admin area has its own (see superadmin/login.html). */
+function loginPathFor(session) {
+    return (session?.roles || []).includes("super_admin") ? "/superadmin/login.html" : "/login.html";
+}
+
 /**
  * Authenticated fetch wrapper.
  * - Adds Authorization header automatically.
@@ -71,8 +76,9 @@ async function apiFetch(path, opts = {}) {
     }
 
     if (res.status === 401) {
+        const loginPath = loginPathFor(session);
         clearSession();
-        window.location.href = "/login.html";
+        window.location.href = loginPath;
         // Throw so callers' .then chains stop here too (redirect is async).
         throw new Error("نشست شما منقضی شده است");
     }
@@ -106,11 +112,12 @@ async function login(schoolId, username, password) {
 }
 
 async function logout() {
+    const loginPath = loginPathFor(getSession());
     try {
         await apiFetch("/api/auth/logout", { method: "POST" });
     } catch {
         // even if the network call fails, still clear the local session
     }
     clearSession();
-    window.location.href = "/login.html";
+    window.location.href = loginPath;
 }

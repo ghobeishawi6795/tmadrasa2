@@ -79,3 +79,12 @@ export async function requirePermission(env, user, permissionKey) {
 export function hasRole(roles, roleKey) {
     return roles.includes(roleKey);
 }
+
+// Throws 403 if `roleKey` isn't among the user's roles. Used for coarse,
+// role-level gates (e.g. super_admin) where there's no fine-grained
+// permission table entry -- the role itself IS the permission.
+export function requireRole(roles, roleKey, message) {
+    if (!roles.includes(roleKey)) {
+        throw errors.forbidden(message || `دسترسی «${roleKey}» را ندارید`);
+    }
+}
