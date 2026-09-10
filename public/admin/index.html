@@ -27,9 +27,6 @@
 
     <nav class="nav" id="nav"></nav>
 
-    <div class="sidebar-bottom">
-        <button class="nav button" onclick="logout()">🚪 خروج</button>
-    </div>
 </aside>
 
 <main class="main">
@@ -92,6 +89,7 @@ const NAV_ITEMS = [
     { key: "messages",      icon: "💬", label: "پیام‌ها" },
     { key: "reports",       icon: "📊", label: "گزارش‌ها" },
     { key: "settings",      icon: "⚙️", label: "تنظیمات" },
+    { key: "help",          icon: "❓", label: "راهنما" },
 ];
 
 let cache = { students: null, classes: null, announcements: null, conversations: null, teachers: null, subjects: null, parents: null };
@@ -116,6 +114,7 @@ async function render(key) {
         else if (key === "schedule") await renderSchedule();
         else if (key === "reports") await renderReports();
         else if (key === "settings") await renderSettings();
+        else if (key === "help") renderHelp();
     } catch (e) {
         content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${escapeHtml(e.message)}</div></div>`;
     }
@@ -1225,6 +1224,37 @@ function renderWizardDone() {
             <button type="button" class="primary-btn" onclick="closeModal(); render('dashboard')">برو به داشبورد</button>
         </div>
     `);
+}
+
+/* =========================================================
+   HELP / GUIDE
+========================================================= */
+
+const HELP_SECTIONS = [
+    { icon: "🏠", title: "داشبورد", body: "نمای کلی مدرسه: تعداد دانش‌آموزان، دانش‌آموزان فعال، تعداد کلاس‌ها و آخرین اطلاعیه‌ها." },
+    { icon: "🎓", title: "دانش‌آموزان", body: "ثبت دانش‌آموز جدید (تکی) یا ایمپورت گروهی با فایل CSV (نام کامل، نام‌کاربری، رمز عبور در هر خط). لیست همه‌ی دانش‌آموزان و وضعیت فعال/غیرفعال آن‌ها اینجا دیده می‌شود." },
+    { icon: "👨‍🏫", title: "معلمان", body: "ثبت معلم جدید و تخصیص کلاس/درس به هر معلم — یک معلم می‌تواند به چند کلاس/درس تخصیص داده شود." },
+    { icon: "👪", title: "والدین", body: "ثبت والد جدید و اتصال فرزند (دانش‌آموز) به حساب والد — والد فقط اطلاعات فرزندان متصل‌شده را می‌بیند." },
+    { icon: "🏫", title: "کلاس‌ها", body: "ساخت کلاس با نام، پایه (اختیاری) و سطح تحصیلی (ابتدایی/دبیرستان) — سطح تحصیلی ظاهر داشبورد دانش‌آموزان همان کلاس را تغییر می‌دهد." },
+    { icon: "📚", title: "دروس", body: "تعریف دروس مدرسه که بعداً برای تخصیص معلم، برنامه هفتگی، تکلیف، آزمون و نمره استفاده می‌شوند." },
+    { icon: "🗓️", title: "برنامه هفتگی", body: "برای هر کلاس، برنامه‌ی روزهای هفته (روز، ساعت، درس، معلم) تعریف می‌شود — این برنامه در پنل والد و دانش‌آموز هم دیده می‌شود." },
+    { icon: "📢", title: "اطلاعیه‌ها", body: "انتشار اطلاعیه برای همه یا یک گروه خاص (معلمان/دانش‌آموزان/والدین) — در داشبورد همان گروه نمایش داده می‌شود." },
+    { icon: "💬", title: "پیام‌ها", body: "شروع گفتگوی مستقیم با هر معلم، دانش‌آموز یا والد و پاسخ‌گویی به گفتگوهای موجود." },
+    { icon: "📊", title: "گزارش‌ها", body: "گزارش تجمیعی مدرسه: نرخ حضور و غیاب ۳۰ روز اخیر، میانگین نمرات هر کلاس و فهرست تکالیف دارای مهلت گذشته." },
+    { icon: "⚙️", title: "تنظیمات", body: "برندینگ مدرسه (نام، رنگ اصلی، لوگو که در هدر همه‌ی نقش‌ها نمایش داده می‌شود)، تقویم تعطیلات، و دانلود خروجی پشتیبان کامل (JSON) از تمام داده‌های مدرسه." },
+    { icon: "🚀", title: "شروع سریع (دکمه بالای صفحه)", body: "یک ویزارد ۴ قدمی برای راه‌اندازی سریع یک مدرسه‌ی تازه: ساخت اولین کلاس، اولین درس، اولین معلم (با تخصیص خودکار) و اولین دانش‌آموز." },
+];
+
+function renderHelp() {
+    document.getElementById("content").innerHTML = `
+        <div class="page-head"><div><div class="page-title">راهنما</div><div class="page-subtitle">توضیح کامل امکانات پنل مدیر</div></div></div>
+        ${HELP_SECTIONS.map(s => `
+            <div class="card" style="margin-bottom:12px">
+                <div class="card-head"><div class="card-title">${s.icon} ${escapeHtml(s.title)}</div></div>
+                <div class="page-subtitle" style="line-height:1.9">${escapeHtml(s.body)}</div>
+            </div>
+        `).join("")}
+    `;
 }
 
 /* =========================================================

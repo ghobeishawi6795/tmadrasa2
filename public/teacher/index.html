@@ -27,9 +27,6 @@
 
     <nav class="nav" id="nav"></nav>
 
-    <div class="sidebar-bottom">
-        <button class="nav button" onclick="logout()">🚪 خروج</button>
-    </div>
 </aside>
 
 <main class="main">
@@ -89,6 +86,7 @@ const NAV_ITEMS = [
     { key: "messages",    icon: "💬", label: "پیام‌ها" },
     { key: "reports",     icon: "📊", label: "گزارش عملکرد", available: false, note: "API گزارش عملکرد هنوز ساخته نشده" },
     { key: "settings",    icon: "⚙️", label: "تنظیمات", available: false, note: "API تنظیمات هنوز ساخته نشده" },
+    { key: "help",        icon: "❓", label: "راهنما" },
 ];
 
 let cache = { classes: null, students: null, exams: null, questions: null, conversations: null, teachingAssignments: null, assignments: null };
@@ -111,6 +109,7 @@ async function render(key) {
         else if (key === "attendance") await renderAttendance();
         else if (key === "grades") await renderGrades();
         else if (key === "messages") await renderMessages();
+        else if (key === "help") renderHelp();
     } catch (e) {
         content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${escapeHtml(e.message)}</div></div>`;
     }
@@ -1044,6 +1043,34 @@ async function openConversation(id, title) {
         await withToast(() => api.post("/api/messages/messages", { conversation_id: id, body: fd.get("body") }));
         openConversation(id, title);
     });
+}
+
+/* =========================================================
+   HELP / GUIDE
+========================================================= */
+
+const HELP_SECTIONS = [
+    { icon: "🏠", title: "داشبورد", body: "نمای کلی آزمون‌های شما: تعداد کل، منتشرشده، پیش‌نویس و بسته‌شده، به‌همراه آخرین آزمون‌ها." },
+    { icon: "🏫", title: "کلاس‌های من", body: "فهرست کلاس/درس‌هایی که مدیر مدرسه شما را برای تدریس آن‌ها تخصیص داده است." },
+    { icon: "📚", title: "تکالیف", body: "ساخت تکلیف با ۶ نوع پاسخ ممکن برای دانش‌آموز: متنی، عکس، صوتی، نقاشی (تصحیح دستی)، یا تطبیق / دسته‌بندی (تصحیح کاملاً خودکار). مشاهده و نمره‌دهی به پاسخ‌های ارسالی از همین بخش." },
+    { icon: "📝", title: "آزمون‌ها", body: "ساخت آزمون (پیش‌نویس)، افزودن سؤال از بانک سؤال، تعیین زمان شروع/پایان و مدت، سپس انتشار برای دانش‌آموزان. بعد از انتشار فقط می‌توان آزمون را بست، نه ویرایش کرد." },
+    { icon: "🗂️", title: "بانک سؤال", body: "ساخت سؤال با ۵ نوع (چندگزینه‌ای، درست/غلط، عددی، پاسخ کوتاه، تشریحی). سؤال قابل ویرایش است تا وقتی به هیچ آزمونی اضافه نشده — بعد از آن برای حفظ اعتبار نمرات قفل می‌شود. دکمه‌ی «وارد کردن از HTML» امکان افزودن دسته‌جمعی سؤال/تکلیف از یک فایل HTML با قالب مشخص (تولیدشده با کمک هوش مصنوعی) را می‌دهد." },
+    { icon: "✅", title: "تصحیح دستی", body: "پاسخ‌های آزمون که نیاز به بررسی دستی دارند (سؤالات پاسخ کوتاه/تشریحی) اینجا نمره‌گذاری می‌شوند." },
+    { icon: "📋", title: "حضور و غیاب", body: "برای هر کلاس، جلسه‌ی حضور و غیاب امروز را بساز و وضعیت هر دانش‌آموز (حاضر/غایب/تأخیر/موجه) را ثبت کن." },
+    { icon: "🎯", title: "نمرات", body: "ثبت دستی نمره برای هر دانش‌آموز در یک کلاس/درس (مثلاً نمره‌ی نهایی یا مستمر) — جدا از نمره‌ی خودکار تکلیف/آزمون." },
+    { icon: "💬", title: "پیام‌ها", body: "شروع گفتگوی مستقیم با یک دانش‌آموز و پاسخ‌گویی به گفتگوهای موجود." },
+];
+
+function renderHelp() {
+    document.getElementById("content").innerHTML = `
+        <div class="page-head"><div><div class="page-title">راهنما</div><div class="page-subtitle">توضیح کامل امکانات پنل معلم</div></div></div>
+        ${HELP_SECTIONS.map(s => `
+            <div class="card" style="margin-bottom:12px">
+                <div class="card-head"><div class="card-title">${s.icon} ${escapeHtml(s.title)}</div></div>
+                <div class="page-subtitle" style="line-height:1.9">${escapeHtml(s.body)}</div>
+            </div>
+        `).join("")}
+    `;
 }
 
 /* =========================================================

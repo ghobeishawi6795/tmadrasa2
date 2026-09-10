@@ -17,7 +17,7 @@ function renderNav(items, activeKey) {
     __activePage = activeKey;
 
     const nav = document.getElementById("nav");
-    nav.innerHTML = items.map(item => {
+    const itemsHtml = items.map(item => {
         const isActive = item.key === activeKey;
         const disabled = item.available === false;
         return `
@@ -30,6 +30,19 @@ function renderNav(items, activeKey) {
             </button>
         `;
     }).join("");
+
+    // logout lives inside the scrollable nav list itself, right after the
+    // last menu item -- not pinned to the bottom of the screen -- with a
+    // divider so it still reads as a separate, final action.
+    const logoutHtml = `
+        <div class="nav-divider"></div>
+        <button class="nav-logout" onclick="logout()">
+            <span class="nav-icon">🚪</span>
+            <span>خروج</span>
+        </button>
+    `;
+
+    nav.innerHTML = itemsHtml + logoutHtml;
 }
 
 function setActiveNav(key) {

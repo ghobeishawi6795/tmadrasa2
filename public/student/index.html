@@ -28,9 +28,6 @@
 
     <nav class="nav" id="nav"></nav>
 
-    <div class="sidebar-bottom">
-        <button class="nav button" onclick="logout()">🚪 خروج</button>
-    </div>
 </aside>
 
 <main class="main">
@@ -85,6 +82,7 @@ const NAV_ITEMS = [
     { key: "messages",      icon: "💬", label: "پیام‌ها" },
     { key: "announcements", icon: "📢", label: "اطلاعیه‌ها" },
     { key: "profile",       icon: "👤", label: "پروفایل" },
+    { key: "help",          icon: "❓", label: "راهنما" },
 ];
 
 function navigate(key) {
@@ -104,6 +102,7 @@ async function render(key) {
         else if (key === "messages") await renderMessages();
         else if (key === "announcements") await renderAnnouncements();
         else if (key === "profile") await renderProfile();
+        else if (key === "help") renderHelp();
     } catch (e) {
         content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${escapeHtml(e.message)}</div></div>`;
     }
@@ -735,6 +734,33 @@ async function renderProfile() {
             <div class="form-group"><label>شناسه مدرسه</label><div>${escapeHtml(user.school_id)}</div></div>
         </div>
         <div class="page-subtitle" style="margin-top:10px">اطلاعات بیشتر (نام کاربری، تلفن و ...) و امکان ویرایش پروفایل هنوز در API وجود ندارد.</div>
+    `;
+}
+
+/* =========================================================
+   HELP / GUIDE
+========================================================= */
+
+const HELP_SECTIONS = [
+    { icon: "🏠", title: "خانه", body: "نمای کلی وضعیت تحصیلی: آزمون‌های پیش رو، تعداد روزهای حاضر/غایب و میانگین کل نمرات." },
+    { icon: "📚", title: "تکالیف", body: "فهرست تکالیف با مهلت ارسال. بسته به نوع تکلیف باید پاسخ متنی بنویسی، عکس بگیری، صدا ضبط کنی، نقاشی بکشی، یا در تطبیق/دسته‌بندی شرکت کنی — این دو مورد آخر بلافاصله بعد از ارسال نمره‌ات را نشان می‌دهند." },
+    { icon: "📝", title: "آزمون‌ها", body: "آزمون‌های فعال کلاست را همینجا شروع می‌کنی و پاسخ می‌دهی؛ می‌توانی هر پاسخ را جدا ذخیره کنی و در پایان ارسال نهایی بزنی. نتیجه‌ی آزمون‌های قبلی هم همینجا قابل مشاهده است." },
+    { icon: "📋", title: "حضور و غیاب", body: "سابقه‌ی کامل حضور، غیاب، تأخیر و موجه‌بودنت در طول سال." },
+    { icon: "🎯", title: "کارنامه", body: "میانگین نمرات هر درس به همراه منبع هر نمره (تکلیف/آزمون/دستی) و بازخورد معلم — دکمه‌ی چاپ برای خروجی PDF هم موجود است." },
+    { icon: "💬", title: "پیام‌ها", body: "گفتگوهایی که معلم یا مدیر مدرسه با تو شروع کرده — می‌توانی پاسخ بدهی، ولی نمی‌توانی خودت گفتگوی جدید شروع کنی." },
+    { icon: "📢", title: "اطلاعیه‌ها", body: "اطلاعیه‌های عمومی یا مخصوص دانش‌آموزان که مدیر مدرسه منتشر کرده." },
+    { icon: "👤", title: "پروفایل", body: "اطلاعات پایه‌ی حساب کاربری‌ات (نام کامل و شناسه مدرسه)." },
+];
+
+function renderHelp() {
+    document.getElementById("content").innerHTML = `
+        <div class="page-head"><div><div class="page-title">راهنما</div><div class="page-subtitle">توضیح کامل امکانات پنل دانش‌آموز</div></div></div>
+        ${HELP_SECTIONS.map(s => `
+            <div class="card" style="margin-bottom:12px">
+                <div class="card-head"><div class="card-title">${s.icon} ${escapeHtml(s.title)}</div></div>
+                <div class="page-subtitle" style="line-height:1.9">${escapeHtml(s.body)}</div>
+            </div>
+        `).join("")}
     `;
 }
 

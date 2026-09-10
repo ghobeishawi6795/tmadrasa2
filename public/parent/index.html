@@ -27,9 +27,6 @@
 
     <nav class="nav" id="nav"></nav>
 
-    <div class="sidebar-bottom">
-        <button class="nav button" onclick="logout()">🚪 خروج</button>
-    </div>
 </aside>
 
 <main class="main">
@@ -86,6 +83,7 @@ const NAV_ITEMS = [
     { key: "messages",    icon: "💬", label: "پیام مدرسه" },
     { key: "announcements", icon: "📢", label: "اطلاعیه‌ها" },
     { key: "settings",    icon: "⚙️", label: "تنظیمات", available: false, note: "API تنظیمات هنوز ساخته نشده" },
+    { key: "help",        icon: "❓", label: "راهنما" },
 ];
 
 let cache = { children: null };
@@ -125,7 +123,7 @@ async function render(key) {
     content.innerHTML = `<div style="padding:60px;text-align:center;color:var(--muted)">در حال بارگذاری...</div>`;
     try {
         const children = await loadChildren();
-        if (children.length === 0 && key !== "dashboard" && key !== "messages" && key !== "announcements") {
+        if (children.length === 0 && key !== "dashboard" && key !== "messages" && key !== "announcements" && key !== "help") {
             content.innerHTML = `<div class="card"><div class="page-subtitle">هنوز فرزندی به حساب شما متصل نشده است.</div></div>`;
             return;
         }
@@ -138,6 +136,7 @@ async function render(key) {
         else if (key === "schedule") await renderSchedule();
         else if (key === "messages") await renderMessages();
         else if (key === "announcements") await renderAnnouncements();
+        else if (key === "help") renderHelp();
     } catch (e) {
         content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${escapeHtml(e.message)}</div></div>`;
     }
@@ -424,6 +423,34 @@ async function renderAnnouncements() {
                 <div style="font-size:13px;line-height:1.9">${escapeHtml(a.body)}</div>
             </div>
         `).join("") || `<div class="card"><div class="page-subtitle">اطلاعیه‌ای ثبت نشده</div></div>`}
+    `;
+}
+
+/* =========================================================
+   HELP / GUIDE
+========================================================= */
+
+const HELP_SECTIONS = [
+    { icon: "🏠", title: "خانه", body: "نمای کلی وضعیت همه‌ی فرزندانت: تعداد فرزندان، تکالیف فعال، آزمون‌های پیش رو و غیبت‌های ۱۴ روز اخیر." },
+    { icon: "👨‍👩‍👧", title: "فرزندان", body: "فهرست فرزندانی که مدیر مدرسه به حساب تو متصل کرده، به همراه کلاس هرکدام." },
+    { icon: "🎯", title: "وضعیت تحصیلی", body: "کارنامه‌ی هر فرزند (اگر بیش از یک فرزند داری، از بالای صفحه انتخاب کن) — میانگین هر درس، منبع نمره و بازخورد معلم. دکمه‌ی چاپ برای خروجی PDF هم هست." },
+    { icon: "📚", title: "تکالیف", body: "فهرست تکالیف فرزند، مهلت، وضعیت ارسال و نمره (در صورت تصحیح)." },
+    { icon: "📝", title: "آزمون‌ها", body: "فهرست آزمون‌های فرزند و نتیجه (در صورت شرکت و تصحیح)." },
+    { icon: "📋", title: "حضور و غیاب", body: "سابقه‌ی کامل حضور، غیاب، تأخیر و موجه‌بودن فرزند." },
+    { icon: "🗓️", title: "برنامه هفتگی", body: "برنامه‌ی کلاسی فرزند: چه روزی، چه ساعتی، چه درسی و با کدام معلم." },
+    { icon: "💬", title: "پیام مدرسه", body: "گفتگوهایی که معلم یا مدیر مدرسه با تو شروع کرده — می‌توانی پاسخ بدهی." },
+    { icon: "📢", title: "اطلاعیه‌ها", body: "اطلاعیه‌های عمومی یا مخصوص والدین که مدیر مدرسه منتشر کرده." },
+];
+
+function renderHelp() {
+    document.getElementById("content").innerHTML = `
+        <div class="page-head"><div><div class="page-title">راهنما</div><div class="page-subtitle">توضیح کامل امکانات پنل والد</div></div></div>
+        ${HELP_SECTIONS.map(s => `
+            <div class="card" style="margin-bottom:12px">
+                <div class="card-head"><div class="card-title">${s.icon} ${escapeHtml(s.title)}</div></div>
+                <div class="page-subtitle" style="line-height:1.9">${escapeHtml(s.body)}</div>
+            </div>
+        `).join("")}
     `;
 }
 
