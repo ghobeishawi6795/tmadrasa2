@@ -598,15 +598,19 @@ async function renderQuestions() {
         </div>
         <div class="module"><div class="module-body table-wrap">
             <table>
-                <thead><tr><th>متن سؤال</th><th>نوع</th><th>تصحیح</th></tr></thead>
+                <thead><tr><th>متن سؤال</th><th>نوع</th><th>تصحیح</th><th></th></tr></thead>
                 <tbody>
                     ${questions.map(q => `
                         <tr>
                             <td>${q.text}</td>
                             <td>${questionTypeLabel(q.type)}</td>
                             <td><span class="status ${["multiple_choice","true_false","numeric"].includes(q.type) ? "green" : "orange"}">${["multiple_choice","true_false","numeric"].includes(q.type) ? "خودکار" : "دستی"}</span></td>
+                            <td>${q.used_in_exam
+                                ? `<span class="page-subtitle" title="چون به یک آزمون اضافه شده، دیگر قابل ویرایش نیست">قفل‌شده</span>`
+                                : `<button class="secondary-btn" onclick="openQuestionForm(cache.questions.find(x => x.id === ${q.id}))">ویرایش</button>`}
+                            </td>
                         </tr>
-                    `).join("") || `<tr><td colspan="3" style="text-align:center;color:var(--muted)">سؤالی ثبت نشده</td></tr>`}
+                    `).join("") || `<tr><td colspan="4" style="text-align:center;color:var(--muted)">سؤالی ثبت نشده</td></tr>`}
                 </tbody>
             </table>
         </div></div>
@@ -677,33 +681,36 @@ function submitImportHtml() {
     reader.readAsText(file, "UTF-8");
 }
 
-function openQuestionForm() {
-    openModal("سؤال جدید", `
+function openQuestionForm(existing) {
+    const isEdit = !!existing;
+    openModal(isEdit ? "ویرایش سؤال" : "سؤال جدید", `
         <form id="questionForm">
             <div class="form-group"><label>نوع سؤال</label>
-                <select class="form-input" name="type" id="qType" onchange="onQuestionTypeChange()">
+                <select class="form-input" name="type" id="qType" onchange="onQuestionTypeChange()" ${isEdit ? "disabled" : ""}>
                     <option value="multiple_choice">چندگزینه‌ای (تصحیح خودکار)</option>
                     <option value="true_false">درست/غلط (تصحیح خودکار)</option>
                     <option value="numeric">عددی (تصحیح خودکار)</option>
                     <option value="short_answer">پاسخ کوتاه (نیازمند بررسی دستی)</option>
                     <option value="long_answer">تشریحی (تصحیح دستی)</option>
                 </select>
+                ${isEdit ? `<div class="page-subtitle">نوع سؤال بعد از ساخت قابل تغییر نیست.</div>` : ""}
             </div>
-            <div class="form-group"><label>متن سؤال</label><textarea class="form-input" name="text" rows="2" style="height:auto;padding:10px 12px" required></textarea></div>
-            <div class="form-group"><label>شناسه درس (اختیاری)</label><input class="form-input" name="subject_id" type="number"></div>
+            <div class="form-group"><label>متن سؤال</label><textarea class="form-input" name="text" rows="2" style="height:auto;padding:10px 12px" required>${isEdit ? existing.text : ""}</textarea></div>
+            <div class="form-group"><label>شناسه درس (اختیاری)</label><input class="form-input" name="subject_id" type="number" value="${isEdit && existing.subject_id ? existing.subject_id : ""}"></div>
             <div id="typeFields"></div>
             <div class="modal-footer">
-                <button type="submit" class="primary-btn">ثبت سؤال</button>
+                <button type="submit" class="primary-btn">${isEdit ? "ذخیره تغییرات" : "ثبت سؤال"}</button>
                 <button type="button" class="secondary-btn" onclick="closeModal()">انصراف</button>
             </div>
         </form>
     `);
-    onQuestionTypeChange();
+    if (isEdit) document.getElementById("qType").value = existing.type;
+    onQuestionTypeChange(existing);
 
     document.getElementById("questionForm").addEventListener("submit", async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        const type = fd.get("type");
+        const type = isEdit ? existing.type : fd.get("type");
         const body = { type, text: fd.get("text"), subject_id: fd.get("subject_id") || null };
 
         if (type === "true_false") body.correct_boolean = fd.get("correct_boolean") === "true";
@@ -715,32 +722,42 @@ function openQuestionForm() {
             body.options = texts.map((t, i) => ({ text: t, is_correct: i === correctIdx }));
         }
 
-        await withToast(() => api.post("/api/teacher/questions", body), "سؤال ساخته شد");
+        if (isEdit) {
+            body.id = existing.id;
+            await withToast(() => api.put("/api/teacher/questions", body), "سؤال بروزرسانی شد");
+        } else {
+            await withToast(() => api.post("/api/teacher/questions", body), "سؤال ساخته شد");
+        }
         closeModal();
         renderQuestions();
     });
 }
 
-function onQuestionTypeChange() {
+function onQuestionTypeChange(existing) {
     const type = document.getElementById("qType").value;
     const box = document.getElementById("typeFields");
     if (type === "multiple_choice") {
-        box.innerHTML = [0, 1, 2, 3].map(i => `
+        const opts = existing?.options || [];
+        box.innerHTML = [0, 1, 2, 3].map(i => {
+            const opt = opts[i];
+            const checked = opt ? !!opt.is_correct : i === 0;
+            return `
             <div class="form-group" style="display:flex;gap:8px;align-items:center">
-                <input type="radio" name="correct_idx" value="${i}" ${i === 0 ? "checked" : ""}>
-                <input class="form-input" name="opt_text" placeholder="گزینه ${i + 1}" ${i < 2 ? "required" : ""}>
+                <input type="radio" name="correct_idx" value="${i}" ${checked ? "checked" : ""}>
+                <input class="form-input" name="opt_text" placeholder="گزینه ${i + 1}" value="${opt ? opt.text : ""}" ${i < 2 ? "required" : ""}>
             </div>
-        `).join("") + `<div class="page-subtitle">گزینه‌ی درست را با دکمه‌ی رادیویی مشخص کن. حداقل ۲ گزینه لازم است.</div>`;
+        `; }).join("") + `<div class="page-subtitle">گزینه‌ی درست را با دکمه‌ی رادیویی مشخص کن. حداقل ۲ گزینه لازم است.</div>`;
     } else if (type === "true_false") {
+        const val = existing ? !!existing.correct_boolean : true;
         box.innerHTML = `<div class="form-group"><label>پاسخ صحیح</label>
-            <select class="form-input" name="correct_boolean"><option value="true">درست</option><option value="false">غلط</option></select></div>`;
+            <select class="form-input" name="correct_boolean"><option value="true" ${val ? "selected" : ""}>درست</option><option value="false" ${!val ? "selected" : ""}>غلط</option></select></div>`;
     } else if (type === "numeric") {
         box.innerHTML = `
-            <div class="form-group"><label>پاسخ صحیح</label><input class="form-input" name="correct_numeric" type="number" step="any" required></div>
-            <div class="form-group"><label>بازه‌ی مجاز خطا (اختیاری)</label><input class="form-input" name="numeric_tolerance" type="number" step="any" value="0"></div>
+            <div class="form-group"><label>پاسخ صحیح</label><input class="form-input" name="correct_numeric" type="number" step="any" value="${existing ? existing.correct_numeric ?? "" : ""}" required></div>
+            <div class="form-group"><label>بازه‌ی مجاز خطا (اختیاری)</label><input class="form-input" name="numeric_tolerance" type="number" step="any" value="${existing ? existing.numeric_tolerance ?? 0 : 0}"></div>
         `;
     } else {
-        box.innerHTML = `<div class="form-group"><label>متن مرجع برای تصحیح دستی (اختیاری)</label><textarea class="form-input" name="correct_text" rows="2" style="height:auto;padding:10px 12px"></textarea></div>`;
+        box.innerHTML = `<div class="form-group"><label>متن مرجع برای تصحیح دستی (اختیاری)</label><textarea class="form-input" name="correct_text" rows="2" style="height:auto;padding:10px 12px">${existing ? existing.correct_text || "" : ""}</textarea></div>`;
     }
 }
 
