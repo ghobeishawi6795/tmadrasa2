@@ -5,6 +5,40 @@
 
 let currentSession = null;
 
+/**
+ * Escapes a value for safe insertion into innerHTML as text content.
+ * Use for ANY user-supplied string (names, titles, messages, feedback,
+ * holiday titles, subject names, etc.) before it goes into a template
+ * literal that gets assigned to innerHTML. Non-string input is coerced
+ * to a string first so it's always safe to call.
+ */
+function escapeHtml(value) {
+    if (value === null || value === undefined) return "";
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+/**
+ * Safely JSON-encodes a value for embedding inside an HTML attribute that
+ * will be parsed back with JSON.parse (e.g. onclick="doThing(${escapeAttr(obj)})"
+ * used as onclick='doThing(JSON.parse(this.dataset.x))' via data-* attributes,
+ * or directly inside a double-quoted attribute). Escapes double quotes and
+ * HTML-significant characters so embedding never breaks the surrounding
+ * markup, regardless of what the underlying strings contain.
+ */
+function escapeAttr(value) {
+    return JSON.stringify(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
 const ROLE_LABELS = {
     admin: "مدیر مدرسه",
     teacher: "معلم",

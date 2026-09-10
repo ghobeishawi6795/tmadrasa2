@@ -117,7 +117,7 @@ async function render(key) {
         else if (key === "reports") await renderReports();
         else if (key === "settings") await renderSettings();
     } catch (e) {
-        content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${e.message}</div></div>`;
+        content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${escapeHtml(e.message)}</div></div>`;
     }
 }
 
@@ -178,7 +178,7 @@ async function renderDashboard() {
                 <div class="activity">
                     <div class="activity-icon">📢</div>
                     <div>
-                        <div class="activity-text"><b>${a.title}</b> — ${a.author_name}</div>
+                        <div class="activity-text"><b>${escapeHtml(a.title)}</b> — ${escapeHtml(a.author_name)}</div>
                         <div class="activity-time">${formatJalaliDate(a.created_at)}</div>
                     </div>
                 </div>
@@ -214,9 +214,9 @@ async function renderStudents() {
                     <tbody>
                         ${students.map(s => `
                             <tr>
-                                <td>${s.full_name}</td>
-                                <td>${s.username}</td>
-                                <td>${s.student_code || "—"}</td>
+                                <td>${escapeHtml(s.full_name)}</td>
+                                <td>${escapeHtml(s.username)}</td>
+                                <td>${escapeHtml(s.student_code || "—")}</td>
                                 <td><span class="status ${s.is_active ? "green" : "red"}">${s.is_active ? "فعال" : "غیرفعال"}</span></td>
                             </tr>
                         `).join("") || `<tr><td colspan="4" style="text-align:center;color:var(--muted)">دانش‌آموزی ثبت نشده</td></tr>`}
@@ -245,7 +245,7 @@ async function openStudentImportForm() {
             <div class="form-group">
                 <label>کلاس مقصد</label>
                 <select class="form-input" name="class_id" required>
-                    ${classes.map(c => `<option value="${c.id}">${c.name}</option>`).join("")}
+                    ${classes.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}
                 </select>
             </div>
             <div class="form-group">
@@ -300,7 +300,7 @@ async function openStudentForm() {
             <div class="form-group"><label>رمز عبور</label><input class="form-input" name="password" type="password" required></div>
             <div class="form-group"><label>کلاس</label>
                 <select class="form-input" name="class_id" required>
-                    ${classes.map(c => `<option value="${c.id}">${c.name}</option>`).join("")}
+                    ${classes.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}
                 </select>
             </div>
             <div class="form-group"><label>کد دانش‌آموزی (اختیاری)</label><input class="form-input" name="student_code"></div>
@@ -346,8 +346,8 @@ async function renderClasses() {
                     <tbody>
                         ${classes.map(c => `
                             <tr>
-                                <td>${c.name}</td>
-                                <td>${c.grade || "—"}</td>
+                                <td>${escapeHtml(c.name)}</td>
+                                <td>${escapeHtml(c.grade || "—")}</td>
                                 <td><span class="status ${c.education_level === "elementary" ? "green" : "orange"}">${educationLevelLabel(c.education_level)}</span></td>
                                 <td><button class="secondary-btn" onclick="deleteClass(${c.id})">حذف</button></td>
                             </tr>
@@ -414,9 +414,9 @@ async function renderTeachers() {
                 <tbody>
                     ${teachers.map(t => `
                         <tr>
-                            <td>${t.full_name}</td><td>${t.username}</td><td>${t.specialty || "—"}</td>
+                            <td>${escapeHtml(t.full_name)}</td><td>${escapeHtml(t.username)}</td><td>${escapeHtml(t.specialty || "—")}</td>
                             <td><span class="status ${t.is_active ? "green" : "red"}">${t.is_active ? "فعال" : "غیرفعال"}</span></td>
-                            <td><button class="secondary-btn" onclick="openAssignForm(${t.id}, '${t.full_name.replace(/'/g, "")}')">تخصیص کلاس/درس</button></td>
+                            <td><button class="secondary-btn" onclick="openAssignForm(${t.id}, ${escapeAttr(t.full_name)})">تخصیص کلاس/درس</button></td>
                         </tr>
                     `).join("") || `<tr><td colspan="5" style="text-align:center;color:var(--muted)">معلمی ثبت نشده</td></tr>`}
                 </tbody>
@@ -462,10 +462,10 @@ async function openAssignForm(teacherId, teacherName) {
     openModal(`تخصیص کلاس/درس به ${teacherName}`, `
         <form id="assignForm">
             <div class="form-group"><label>کلاس</label>
-                <select class="form-input" name="class_id" required>${classes.map(c => `<option value="${c.id}">${c.name}</option>`).join("")}</select>
+                <select class="form-input" name="class_id" required>${classes.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}</select>
             </div>
             <div class="form-group"><label>درس</label>
-                <select class="form-input" name="subject_id" required>${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join("")}</select>
+                <select class="form-input" name="subject_id" required>${subjects.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("")}</select>
             </div>
             <div class="modal-footer">
                 <button type="submit" class="primary-btn">ثبت تخصیص</button>
@@ -502,7 +502,7 @@ async function renderSubjects() {
                 <thead><tr><th>نام درس</th><th>پایه</th><th></th></tr></thead>
                 <tbody>
                     ${subjects.map(s => `
-                        <tr><td>${s.name}</td><td>${s.grade || "—"}</td><td><button class="secondary-btn" onclick="deleteSubject(${s.id})">حذف</button></td></tr>
+                        <tr><td>${escapeHtml(s.name)}</td><td>${escapeHtml(s.grade || "—")}</td><td><button class="secondary-btn" onclick="deleteSubject(${s.id})">حذف</button></td></tr>
                     `).join("") || `<tr><td colspan="3" style="text-align:center;color:var(--muted)">درسی ثبت نشده</td></tr>`}
                 </tbody>
             </table>
@@ -556,8 +556,8 @@ async function renderParents() {
                 <thead><tr><th>نام</th><th>نام کاربری</th><th></th></tr></thead>
                 <tbody>
                     ${parents.map(p => `
-                        <tr><td>${p.full_name}</td><td>${p.username}</td>
-                            <td><button class="secondary-btn" onclick="openLinkChildForm(${p.id}, '${p.full_name.replace(/'/g, "")}')">اتصال فرزند</button></td>
+                        <tr><td>${escapeHtml(p.full_name)}</td><td>${escapeHtml(p.username)}</td>
+                            <td><button class="secondary-btn" onclick="openLinkChildForm(${p.id}, ${escapeAttr(p.full_name)})">اتصال فرزند</button></td>
                         </tr>
                     `).join("") || `<tr><td colspan="3" style="text-align:center;color:var(--muted)">والدی ثبت نشده</td></tr>`}
                 </tbody>
@@ -595,7 +595,7 @@ async function openLinkChildForm(parentId, parentName) {
     openModal(`اتصال فرزند به ${parentName}`, `
         <form id="linkChildForm">
             <div class="form-group"><label>دانش‌آموز</label>
-                <select class="form-input" name="student_id" required>${students.map(s => `<option value="${s.id}">${s.full_name}</option>`).join("")}</select>
+                <select class="form-input" name="student_id" required>${students.map(s => `<option value="${s.id}">${escapeHtml(s.full_name)}</option>`).join("")}</select>
             </div>
             <div class="modal-footer">
                 <button type="submit" class="primary-btn">اتصال</button>
@@ -626,7 +626,7 @@ async function renderSchedule() {
         <div class="form-group" style="max-width:280px"><label>کلاس</label>
             <select class="form-input" id="scheduleClassSelect" onchange="loadSchedule(this.value)">
                 <option value="">— انتخاب کنید —</option>
-                ${classes.map(c => `<option value="${c.id}">${c.name}</option>`).join("")}
+                ${classes.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}
             </select>
         </div>
         <div id="scheduleBox"></div>
@@ -650,7 +650,7 @@ async function loadSchedule(classId) {
                         <tr>
                             <td>${WEEKDAY_LABELS[s.day_of_week] ?? s.day_of_week}</td>
                             <td>${s.start_time} - ${s.end_time}</td>
-                            <td>${s.subject_name}</td><td>${s.teacher_name}</td>
+                            <td>${escapeHtml(s.subject_name)}</td><td>${escapeHtml(s.teacher_name)}</td>
                             <td><button class="secondary-btn" onclick="deleteScheduleEntry(${s.id}, ${classId})">حذف</button></td>
                         </tr>
                     `).join("") || `<tr><td colspan="5" style="text-align:center;color:var(--muted)">برنامه‌ای ثبت نشده</td></tr>`}
@@ -675,10 +675,10 @@ async function openScheduleForm(classId) {
                 </select>
             </div>
             <div class="form-group"><label>درس</label>
-                <select class="form-input" name="subject_id" required>${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join("")}</select>
+                <select class="form-input" name="subject_id" required>${subjects.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("")}</select>
             </div>
             <div class="form-group"><label>معلم</label>
-                <select class="form-input" name="teacher_id" required>${teachers.map(t => `<option value="${t.id}">${t.full_name}</option>`).join("")}</select>
+                <select class="form-input" name="teacher_id" required>${teachers.map(t => `<option value="${t.id}">${escapeHtml(t.full_name)}</option>`).join("")}</select>
             </div>
             <div class="form-group"><label>ساعت شروع</label><input class="form-input" name="start_time" type="time" required></div>
             <div class="form-group"><label>ساعت پایان</label><input class="form-input" name="end_time" type="time" required></div>
@@ -725,7 +725,7 @@ async function renderSettings() {
             <div class="page-subtitle" style="margin-bottom:14px">نام، لوگو و رنگ اصلی که در هدر داشبورد همه‌ی نقش‌ها (مدیر، معلم، دانش‌آموز، والد) نمایش داده می‌شود.</div>
             <div class="form-group">
                 <label class="form-label">نام مدرسه</label>
-                <input type="text" id="brandName" class="form-input" value="${school.name || ""}">
+                <input type="text" id="brandName" class="form-input" value="${escapeHtml(school.name || "")}">
             </div>
             <div class="form-group">
                 <label class="form-label">رنگ اصلی</label>
@@ -754,7 +754,7 @@ async function renderSettings() {
                     ${holidays.map(h => `
                         <tr>
                             <td>${formatJalaliDate(h.holiday_date)}</td>
-                            <td>${h.title}</td>
+                            <td>${escapeHtml(h.title)}</td>
                             <td><button class="secondary-btn" onclick="deleteHoliday(${h.id})">حذف</button></td>
                         </tr>
                     `).join("") || `<tr><td colspan="3" style="text-align:center;color:var(--muted)">تعطیلی ثبت نشده</td></tr>`}
@@ -860,11 +860,11 @@ async function renderAnnouncements() {
         ${announcements.map(a => `
             <div class="card" style="margin-bottom:14px">
                 <div class="card-head">
-                    <div class="card-title">${a.title}</div>
+                    <div class="card-title">${escapeHtml(a.title)}</div>
                     <span class="status green">${targetLabel(a.target)}</span>
                 </div>
-                <div class="page-subtitle" style="margin-bottom:8px">${a.author_name} — ${formatJalaliDate(a.created_at)}</div>
-                <div style="font-size:13px;line-height:1.9">${a.body}</div>
+                <div class="page-subtitle" style="margin-bottom:8px">${escapeHtml(a.author_name)} — ${formatJalaliDate(a.created_at)}</div>
+                <div style="font-size:13px;line-height:1.9">${escapeHtml(a.body)}</div>
             </div>
         `).join("") || `<div class="card"><div class="page-subtitle">اطلاعیه‌ای ثبت نشده</div></div>`}
     `;
@@ -927,11 +927,11 @@ async function renderMessages() {
         <div class="module">
             <div class="module-body">
                 ${conversations.map(c => `
-                    <div class="activity" style="cursor:pointer" onclick="openConversation(${c.id}, '${(c.title || "گفتگو").replace(/'/g, "")}')">
+                    <div class="activity" style="cursor:pointer" onclick="openConversation(${c.id}, ${escapeAttr(c.title || "گفتگو")})">
                         <div class="activity-icon">💬</div>
                         <div>
-                            <div class="activity-text"><b>${c.title || (c.type === "direct" ? "گفتگوی مستقیم" : "گروه")}</b></div>
-                            <div class="activity-time">${c.last_message || "پیامی ارسال نشده"}</div>
+                            <div class="activity-text"><b>${escapeHtml(c.title || (c.type === "direct" ? "گفتگوی مستقیم" : "گروه"))}</b></div>
+                            <div class="activity-time">${escapeHtml(c.last_message || "پیامی ارسال نشده")}</div>
                         </div>
                     </div>
                 `).join("") || `<div class="page-subtitle">گفتگویی وجود ندارد</div>`}
@@ -952,9 +952,9 @@ async function openNewConversationForm() {
         <form id="newConvForm">
             <div class="form-group"><label>طرف گفتگو</label>
                 <select class="form-input" name="member_user_id" required>
-                    <optgroup label="معلمان">${teachers.map(t => `<option value="${t.user_id}">${t.full_name}</option>`).join("")}</optgroup>
-                    <optgroup label="دانش‌آموزان">${students.map(s => `<option value="${s.user_id}">${s.full_name}</option>`).join("")}</optgroup>
-                    <optgroup label="والدین">${parents.map(p => `<option value="${p.user_id}">${p.full_name}</option>`).join("")}</optgroup>
+                    <optgroup label="معلمان">${teachers.map(t => `<option value="${t.user_id}">${escapeHtml(t.full_name)}</option>`).join("")}</optgroup>
+                    <optgroup label="دانش‌آموزان">${students.map(s => `<option value="${s.user_id}">${escapeHtml(s.full_name)}</option>`).join("")}</optgroup>
+                    <optgroup label="والدین">${parents.map(p => `<option value="${p.user_id}">${escapeHtml(p.full_name)}</option>`).join("")}</optgroup>
                 </select>
             </div>
             <div class="form-group"><label>پیام اول</label><textarea class="form-input" name="body" rows="3" style="height:auto;padding:10px 12px" required></textarea></div>
@@ -985,7 +985,7 @@ async function openConversation(id, title) {
         <div style="max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
             ${messages.map(m => `
                 <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:12px">
-                    <b>${m.sender_name || "کاربر"}</b><div style="margin-top:4px">${m.body}</div>
+                    <b>${escapeHtml(m.sender_name || "کاربر")}</b><div style="margin-top:4px">${escapeHtml(m.body)}</div>
                 </div>
             `).join("") || `<div class="page-subtitle">پیامی وجود ندارد</div>`}
         </div>
@@ -1042,7 +1042,7 @@ async function renderReports() {
                 <thead><tr><th>کلاس</th><th>سطح</th><th>میانگین</th><th>تعداد نمره ثبت‌شده</th></tr></thead>
                 <tbody>${r.class_averages.map(c => `
                     <tr>
-                        <td>${c.class_name}</td>
+                        <td>${escapeHtml(c.class_name)}</td>
                         <td>${c.education_level === "elementary" ? "ابتدایی" : "متوسطه"}</td>
                         <td>${c.average_percent !== null ? c.average_percent + "٪" : "—"}</td>
                         <td>${c.grade_count}</td>
@@ -1057,8 +1057,8 @@ async function renderReports() {
                 <thead><tr><th>تکلیف</th><th>کلاس</th><th>مهلت</th><th>ارسال‌شده</th></tr></thead>
                 <tbody>${r.overdue_assignments.map(a => `
                     <tr>
-                        <td>${a.title}</td>
-                        <td>${a.class_name}</td>
+                        <td>${escapeHtml(a.title)}</td>
+                        <td>${escapeHtml(a.class_name)}</td>
                         <td>${formatJalaliDate(a.due_at)}</td>
                         <td>${a.submitted_count} / ${a.class_size}</td>
                     </tr>
@@ -1156,7 +1156,7 @@ function renderWizardStep3() {
     openModal("شروع سریع — قدم ۳ از ۴", `
         ${wizardProgress(3)}
         <p class="page-subtitle" style="margin-bottom:12px">
-            یک معلم بساز — خودکار برای تدریس «${__wizard.subject_name}» در کلاس «${__wizard.class_name}» تخصیص داده می‌شه.
+            یک معلم بساز — خودکار برای تدریس «${escapeHtml(__wizard.subject_name)}» در کلاس «${escapeHtml(__wizard.class_name)}» تخصیص داده می‌شه.
         </p>
         <form id="wizStep3">
             <div class="form-group"><label>نام کامل معلم</label><input class="form-input" name="full_name" required></div>
@@ -1189,7 +1189,7 @@ function renderWizardStep3() {
 function renderWizardStep4() {
     openModal("شروع سریع — قدم ۴ از ۴", `
         ${wizardProgress(4)}
-        <p class="page-subtitle" style="margin-bottom:12px">در نهایت اولین دانش‌آموز رو به کلاس «${__wizard.class_name}» اضافه کن.</p>
+        <p class="page-subtitle" style="margin-bottom:12px">در نهایت اولین دانش‌آموز رو به کلاس «${escapeHtml(__wizard.class_name)}» اضافه کن.</p>
         <form id="wizStep4">
             <div class="form-group"><label>نام کامل دانش‌آموز</label><input class="form-input" name="full_name" required></div>
             <div class="form-group"><label>نام کاربری</label><input class="form-input" name="username" required></div>
@@ -1216,9 +1216,9 @@ function renderWizardDone() {
     openModal("آماده شد 🎉", `
         <p class="page-subtitle" style="margin-bottom:14px">مدرسه‌ت آماده‌ی کار شد:</p>
         <ul style="font-size:13px;line-height:2;margin-bottom:16px">
-            <li>کلاس: <b>${__wizard.class_name}</b></li>
-            <li>درس: <b>${__wizard.subject_name}</b></li>
-            <li>معلم: <b>${__wizard.teacher_name}</b> (تخصیص داده شد)</li>
+            <li>کلاس: <b>${escapeHtml(__wizard.class_name)}</b></li>
+            <li>درس: <b>${escapeHtml(__wizard.subject_name)}</b></li>
+            <li>معلم: <b>${escapeHtml(__wizard.teacher_name)}</b> (تخصیص داده شد)</li>
             <li>دانش‌آموز اول ثبت شد</li>
         </ul>
         <div class="modal-footer">

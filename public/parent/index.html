@@ -108,7 +108,7 @@ function childSelectorHtml(children) {
         <div class="form-group" style="max-width:260px">
             <label>فرزند</label>
             <select class="form-input" onchange="selectedChild = Number(this.value); render(currentPageKey())">
-                ${children.map(c => `<option value="${c.student_id}" ${c.student_id === selectedChild ? "selected" : ""}>${c.full_name} (${educationLevelLabel(c.education_level)})</option>`).join("")}
+                ${children.map(c => `<option value="${c.student_id}" ${c.student_id === selectedChild ? "selected" : ""}>${escapeHtml(c.full_name)} (${educationLevelLabel(c.education_level)})</option>`).join("")}
             </select>
         </div>
     `;
@@ -139,7 +139,7 @@ async function render(key) {
         else if (key === "messages") await renderMessages();
         else if (key === "announcements") await renderAnnouncements();
     } catch (e) {
-        content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${e.message}</div></div>`;
+        content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${escapeHtml(e.message)}</div></div>`;
     }
 }
 
@@ -168,7 +168,7 @@ async function renderDashboard() {
             ${children.map(c => `
                 <div class="activity">
                     <div class="activity-icon">🎓</div>
-                    <div><div class="activity-text"><b>${c.full_name}</b></div><div class="activity-time">${c.class_name || "بدون کلاس"}</div></div>
+                    <div><div class="activity-text"><b>${escapeHtml(c.full_name)}</b></div><div class="activity-time">${escapeHtml(c.class_name || "بدون کلاس")}</div></div>
                 </div>
             `).join("") || `<div class="page-subtitle">فرزندی ثبت نشده</div>`}
         </div>
@@ -186,7 +186,7 @@ async function renderChildren() {
         <div class="module"><div class="module-body table-wrap">
             <table>
                 <thead><tr><th>نام</th><th>کلاس</th><th>سطح تحصیلی</th></tr></thead>
-                <tbody>${children.map(c => `<tr><td>${c.full_name}</td><td>${c.class_name || "—"}</td><td>${educationLevelLabel(c.education_level)}</td></tr>`).join("") || `<tr><td colspan="3" style="text-align:center;color:var(--muted)">فرزندی ثبت نشده</td></tr>`}</tbody>
+                <tbody>${children.map(c => `<tr><td>${escapeHtml(c.full_name)}</td><td>${escapeHtml(c.class_name || "—")}</td><td>${educationLevelLabel(c.education_level)}</td></tr>`).join("") || `<tr><td colspan="3" style="text-align:center;color:var(--muted)">فرزندی ثبت نشده</td></tr>`}</tbody>
             </table>
         </div></div>
     `;
@@ -205,7 +205,7 @@ async function renderGrades() {
 
     document.getElementById("content").innerHTML = `
         <div class="page-head">
-            <div><div class="page-title">وضعیت تحصیلی</div><div class="page-subtitle">${report.period ? report.period.name || "دوره‌ی جاری" : "بدون دوره‌ی نمره‌دهی ثبت‌شده"}</div></div>
+            <div><div class="page-title">وضعیت تحصیلی</div><div class="page-subtitle">${escapeHtml(report.period ? report.period.name || "دوره‌ی جاری" : "بدون دوره‌ی نمره‌دهی ثبت‌شده")}</div></div>
             <button class="secondary-btn" onclick="printReportCard()">🖨️ چاپ / خروجی PDF</button>
         </div>
         ${childSelectorHtml(children)}
@@ -214,10 +214,10 @@ async function renderGrades() {
         </div>
         ${report.subjects.map(s => `
             <div class="card" style="margin-bottom:14px">
-                <div class="card-head"><div class="card-title">${s.subject_name}</div><span class="status green">میانگین: ${s.average ?? "—"}</span></div>
+                <div class="card-head"><div class="card-title">${escapeHtml(s.subject_name)}</div><span class="status green">میانگین: ${s.average ?? "—"}</span></div>
                 <div class="table-wrap"><table>
                     <thead><tr><th>منبع</th><th>نمره</th><th>بازخورد</th></tr></thead>
-                    <tbody>${s.entries.map(e => `<tr><td>${e.source}</td><td>${e.score} / ${e.max_score}</td><td>${e.feedback || "—"}</td></tr>`).join("")}</tbody>
+                    <tbody>${s.entries.map(e => `<tr><td>${escapeHtml(e.source)}</td><td>${e.score} / ${e.max_score}</td><td>${escapeHtml(e.feedback || "—")}</td></tr>`).join("")}</tbody>
                 </table></div>
             </div>
         `).join("") || `<div class="card"><div class="page-subtitle">نمره‌ای ثبت نشده</div></div>`}
@@ -233,7 +233,7 @@ function printReportCard() {
     const win = window.open("", "_blank");
     win.document.write(`
         <html dir="rtl" lang="fa"><head><meta charset="utf-8">
-        <title>کارنامه${childName ? " — " + childName : ""}</title>
+        <title>کارنامه${childName ? " — " + escapeHtml(childName) : ""}</title>
         <style>
             body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 30px; }
             h1 { font-size: 20px; margin-bottom: 4px; }
@@ -243,14 +243,14 @@ function printReportCard() {
             th { background: #f2f2f2; }
             .avg { font-size: 15px; font-weight: bold; margin: 14px 0; }
         </style></head><body>
-        <h1>کارنامه${childName ? " — " + childName : ""}</h1>
-        <h2>${report.period ? report.period.name || "دوره‌ی جاری" : "بدون دوره‌ی نمره‌دهی"}</h2>
+        <h1>کارنامه${childName ? " — " + escapeHtml(childName) : ""}</h1>
+        <h2>${escapeHtml(report.period ? report.period.name || "دوره‌ی جاری" : "بدون دوره‌ی نمره‌دهی")}</h2>
         <div class="avg">میانگین کل: ${report.overall_average ?? "—"}</div>
         ${report.subjects.map(s => `
-            <h3>${s.subject_name} — میانگین: ${s.average ?? "—"}</h3>
+            <h3>${escapeHtml(s.subject_name)} — میانگین: ${s.average ?? "—"}</h3>
             <table>
                 <thead><tr><th>منبع</th><th>نمره</th><th>بازخورد</th></tr></thead>
-                <tbody>${s.entries.map(e => `<tr><td>${e.source}</td><td>${e.score} / ${e.max_score}</td><td>${e.feedback || "—"}</td></tr>`).join("")}</tbody>
+                <tbody>${s.entries.map(e => `<tr><td>${escapeHtml(e.source)}</td><td>${e.score} / ${e.max_score}</td><td>${escapeHtml(e.feedback || "—")}</td></tr>`).join("")}</tbody>
             </table>
         `).join("")}
         </body></html>
@@ -277,7 +277,7 @@ async function renderAssignments() {
                 <tbody>
                     ${assignments.map(a => `
                         <tr>
-                            <td>${a.title}</td><td>${a.subject_name}</td><td>${a.due_at ? formatJalaliDateTime(a.due_at) : "—"}</td>
+                            <td>${escapeHtml(a.title)}</td><td>${escapeHtml(a.subject_name)}</td><td>${a.due_at ? formatJalaliDateTime(a.due_at) : "—"}</td>
                             <td>${assignmentStatusLabel(a.submission_status)}</td>
                             <td>${a.score ?? "—"}</td>
                         </tr>
@@ -309,7 +309,7 @@ async function renderExams() {
                 <tbody>
                     ${exams.map(e => `
                         <tr>
-                            <td>${e.title}</td><td>${e.subject_name}</td><td>${formatJalaliDate(e.start_at)}</td>
+                            <td>${escapeHtml(e.title)}</td><td>${escapeHtml(e.subject_name)}</td><td>${formatJalaliDate(e.start_at)}</td>
                             <td>${e.attempt_status ? `${e.total_score ?? "در انتظار تصحیح"} ${e.max_score ? "/ " + e.max_score : ""}` : "شرکت نکرده"}</td>
                         </tr>
                     `).join("") || `<tr><td colspan="4" style="text-align:center;color:var(--muted)">آزمونی ثبت نشده</td></tr>`}
@@ -363,7 +363,7 @@ async function renderSchedule() {
             <table>
                 <thead><tr><th>روز</th><th>ساعت</th><th>درس</th><th>معلم</th></tr></thead>
                 <tbody>
-                    ${schedule.map(s => `<tr><td>${DAYS[s.day_of_week] ?? s.day_of_week}</td><td>${s.start_time} - ${s.end_time}</td><td>${s.subject_name}</td><td>${s.teacher_name}</td></tr>`).join("") || `<tr><td colspan="4" style="text-align:center;color:var(--muted)">برنامه‌ای ثبت نشده</td></tr>`}
+                    ${schedule.map(s => `<tr><td>${DAYS[s.day_of_week] ?? s.day_of_week}</td><td>${s.start_time} - ${s.end_time}</td><td>${escapeHtml(s.subject_name)}</td><td>${escapeHtml(s.teacher_name)}</td></tr>`).join("") || `<tr><td colspan="4" style="text-align:center;color:var(--muted)">برنامه‌ای ثبت نشده</td></tr>`}
                 </tbody>
             </table>
         </div></div>
@@ -381,9 +381,9 @@ async function renderMessages() {
         <div class="page-head"><div><div class="page-title">پیام مدرسه</div><div class="page-subtitle">${conversations.length} گفتگو</div></div></div>
         <div class="module"><div class="module-body">
             ${conversations.map(c => `
-                <div class="activity" style="cursor:pointer" onclick="openConversation(${c.id}, '${(c.title || "گفتگو").replace(/'/g, "")}')">
+                <div class="activity" style="cursor:pointer" onclick="openConversation(${c.id}, ${escapeAttr(c.title || "گفتگو")})">
                     <div class="activity-icon">💬</div>
-                    <div><div class="activity-text"><b>${c.title || "گفتگو"}</b></div><div class="activity-time">${c.last_message || "پیامی ارسال نشده"}</div></div>
+                    <div><div class="activity-text"><b>${escapeHtml(c.title || "گفتگو")}</b></div><div class="activity-time">${escapeHtml(c.last_message || "پیامی ارسال نشده")}</div></div>
                 </div>
             `).join("") || `<div class="page-subtitle">گفتگویی وجود ندارد — معلم یا مدیر باید ابتدا گفتگو را شروع کند</div>`}
         </div></div>
@@ -394,7 +394,7 @@ async function openConversation(id, title) {
     const messages = await api.get(`/api/messages/messages?conversation_id=${id}`);
     openModal(title, `
         <div style="max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
-            ${messages.map(m => `<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:12px"><b>${m.sender_name || "کاربر"}</b><div style="margin-top:4px">${m.body}</div></div>`).join("") || `<div class="page-subtitle">پیامی وجود ندارد</div>`}
+            ${messages.map(m => `<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:12px"><b>${escapeHtml(m.sender_name || "کاربر")}</b><div style="margin-top:4px">${escapeHtml(m.body)}</div></div>`).join("") || `<div class="page-subtitle">پیامی وجود ندارد</div>`}
         </div>
         <form id="replyForm">
             <div class="form-group"><input class="form-input" name="body" placeholder="پیام..." required></div>
@@ -419,9 +419,9 @@ async function renderAnnouncements() {
         <div class="page-head"><div><div class="page-title">اطلاعیه‌ها</div><div class="page-subtitle">${announcements.length} اطلاعیه</div></div></div>
         ${announcements.map(a => `
             <div class="card" style="margin-bottom:14px">
-                <div class="card-head"><div class="card-title">${a.title}</div></div>
-                <div class="page-subtitle" style="margin-bottom:8px">${a.author_name} — ${formatJalaliDate(a.created_at)}</div>
-                <div style="font-size:13px;line-height:1.9">${a.body}</div>
+                <div class="card-head"><div class="card-title">${escapeHtml(a.title)}</div></div>
+                <div class="page-subtitle" style="margin-bottom:8px">${escapeHtml(a.author_name)} — ${formatJalaliDate(a.created_at)}</div>
+                <div style="font-size:13px;line-height:1.9">${escapeHtml(a.body)}</div>
             </div>
         `).join("") || `<div class="card"><div class="page-subtitle">اطلاعیه‌ای ثبت نشده</div></div>`}
     `;

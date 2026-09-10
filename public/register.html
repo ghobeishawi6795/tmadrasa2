@@ -139,7 +139,8 @@ document.getElementById("registerForm").addEventListener("submit", async (e) => 
         if (!res.ok || json.success === false) {
             throw new Error(json?.error?.message || "خطایی رخ داد");
         }
-        successBox.innerHTML = `مدرسه با موفقیت ساخته شد 🎉<br>شناسه مدرسه: <b>${json.data.school_id}</b><br>این شناسه را جایی یادداشت کن، برای ورود لازمش داری.<br><a href="/login.html">رفتن به صفحه ورود ←</a>`;
+        const escapedSchoolId = String(json.data.school_id).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        successBox.innerHTML = `مدرسه با موفقیت ساخته شد 🎉<br>شناسه مدرسه: <b>${escapedSchoolId}</b><br>این شناسه را جایی یادداشت کن، برای ورود لازمش داری.<br><a href="/login.html">رفتن به صفحه ورود ←</a>`;
         successBox.style.display = "block";
         document.getElementById("registerForm").reset();
     } catch (err) {

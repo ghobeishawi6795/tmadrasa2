@@ -105,7 +105,7 @@ async function render(key) {
         else if (key === "announcements") await renderAnnouncements();
         else if (key === "profile") await renderProfile();
     } catch (e) {
-        content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${e.message}</div></div>`;
+        content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${escapeHtml(e.message)}</div></div>`;
     }
 }
 
@@ -137,7 +137,7 @@ async function renderDashboard() {
             ${upcoming.slice(0, 5).map(e => `
                 <div class="activity">
                     <div class="activity-icon">📝</div>
-                    <div><div class="activity-text"><b>${e.title}</b> — ${e.subject_name}</div><div class="activity-time">تا ${formatJalaliDateTime(e.end_at)}</div></div>
+                    <div><div class="activity-text"><b>${escapeHtml(e.title)}</b> — ${escapeHtml(e.subject_name)}</div><div class="activity-time">تا ${formatJalaliDateTime(e.end_at)}</div></div>
                 </div>
             `).join("") || `<div class="page-subtitle">آزمون فعالی نیست</div>`}
         </div>
@@ -161,11 +161,11 @@ async function renderAssignments() {
                 <tbody>
                     ${assignments.map(a => `
                         <tr>
-                            <td>${a.title}</td>
-                            <td>${a.subject_name}</td>
+                            <td>${escapeHtml(a.title)}</td>
+                            <td>${escapeHtml(a.subject_name)}</td>
                             <td>${formatJalaliDateTime(a.due_at)}</td>
                             <td>${assignmentStatusBadge(a)}</td>
-                            <td><button class="secondary-btn" onclick='openAssignmentDetail(${JSON.stringify(a)})'>${a.submission_id ? "مشاهده" : "ارسال پاسخ"}</button></td>
+                            <td><button class="secondary-btn" onclick="openAssignmentDetail(${escapeAttr(a)})">${a.submission_id ? "مشاهده" : "ارسال پاسخ"}</button></td>
                         </tr>
                     `).join("") || `<tr><td colspan="5" style="text-align:center;color:var(--muted)">تکلیفی ثبت نشده</td></tr>`}
                 </tbody>
@@ -186,7 +186,7 @@ function openAssignmentDetail(a) {
     const canResubmit = !alreadySubmitted || a.submission_attempt_number < a.max_attempts;
     const overdue = new Date() > new Date(a.due_at);
 
-    let bodyHtml = `<div class="page-subtitle" style="margin-bottom:14px">${a.description || ""}</div>`;
+    let bodyHtml = `<div class="page-subtitle" style="margin-bottom:14px">${escapeHtml(a.description || "")}</div>`;
 
     if (alreadySubmitted) {
         bodyHtml += `<div class="page-subtitle">وضعیت: ${assignmentStatusBadge(a)}</div>`;
@@ -325,10 +325,10 @@ function renderMatchBuilder(interactive) {
         <div class="page-subtitle" style="margin-bottom:10px">یک مورد از ستون راست را انتخاب کن، بعد جفتش را از ستون چپ بزن.</div>
         <div style="display:flex;gap:16px">
             <div id="matchLeftCol" style="flex:1;display:flex;flex-direction:column;gap:6px">
-                ${interactive.left_items.map(li => `<button type="button" class="secondary-btn match-left-btn" data-id="${li.id}">${li.text}</button>`).join("")}
+                ${interactive.left_items.map(li => `<button type="button" class="secondary-btn match-left-btn" data-id="${li.id}">${escapeHtml(li.text)}</button>`).join("")}
             </div>
             <div id="matchRightCol" style="flex:1;display:flex;flex-direction:column;gap:6px">
-                ${interactive.right_items.map(ri => `<button type="button" class="secondary-btn match-right-btn" data-id="${ri.id}">${ri.text}</button>`).join("")}
+                ${interactive.right_items.map(ri => `<button type="button" class="secondary-btn match-right-btn" data-id="${ri.id}">${escapeHtml(ri.text)}</button>`).join("")}
             </div>
         </div>
         <form id="submitForm"><div class="modal-footer"><button type="submit" class="primary-btn">ارسال</button><button type="button" class="secondary-btn" onclick="closeModal()">بستن</button></div></form>
@@ -367,10 +367,10 @@ function renderDragDropBuilder(interactive) {
         <div id="dragDropItems" style="display:flex;flex-direction:column;gap:8px">
             ${interactive.items.map(it => `
                 <div style="display:flex;align-items:center;gap:10px">
-                    <div style="flex:1">${it.text}</div>
+                    <div style="flex:1">${escapeHtml(it.text)}</div>
                     <select class="form-input dd-bucket-select" data-item-id="${it.id}" style="max-width:160px">
                         <option value="">— انتخاب کن —</option>
-                        ${interactive.buckets.map((b, i) => `<option value="${i}">${b}</option>`).join("")}
+                        ${interactive.buckets.map((b, i) => `<option value="${i}">${escapeHtml(b)}</option>`).join("")}
                     </select>
                 </div>
             `).join("")}
@@ -461,8 +461,8 @@ async function renderExams() {
                     ${exams.map(e => {
                         const att = attemptByExam.get(e.id);
                         return `<tr>
-                            <td>${e.title}</td>
-                            <td>${e.subject_name}</td>
+                            <td>${escapeHtml(e.title)}</td>
+                            <td>${escapeHtml(e.subject_name)}</td>
                             <td>${formatJalaliDateTime(e.end_at)}</td>
                             <td style="display:flex;gap:6px">
                                 <button class="secondary-btn" onclick="startExam(${e.id})">${att ? "ادامه/شروع دوباره" : "شروع آزمون"}</button>
@@ -479,7 +479,7 @@ async function renderExams() {
             ${attempts.map(a => `
                 <div class="activity" style="cursor:pointer" onclick="viewResult(${a.attempt_id})">
                     <div class="activity-icon">📄</div>
-                    <div><div class="activity-text"><b>${a.exam_title}</b> — ${a.subject_name}</div><div class="activity-time">${attemptStatusLabel(a.status)}${a.total_score != null ? ` — نمره: ${a.total_score}/${a.max_score}` : ""}</div></div>
+                    <div><div class="activity-text"><b>${escapeHtml(a.exam_title)}</b> — ${escapeHtml(a.subject_name)}</div><div class="activity-time">${attemptStatusLabel(a.status)}${a.total_score != null ? ` — نمره: ${a.total_score}/${a.max_score}` : ""}</div></div>
                 </div>
             `).join("") || `<div class="page-subtitle">هنوز آزمونی نداده‌اید</div>`}
         </div>
@@ -500,7 +500,7 @@ function questionInput(q) {
     if (q.type === "multiple_choice") {
         return q.options.map(o => `
             <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                <input type="radio" name="q_${q.id}" value="${o.id}"> ${o.text}
+                <input type="radio" name="q_${q.id}" value="${o.id}"> ${escapeHtml(o.text)}
             </label>
         `).join("");
     }
@@ -518,11 +518,11 @@ function questionInput(q) {
 
 function openExamRunner(exam, attemptId) {
     openModal(exam.title, `
-        <div class="page-subtitle" style="margin-bottom:14px">${exam.description || ""} — مدت: ${exam.duration_minutes} دقیقه</div>
+        <div class="page-subtitle" style="margin-bottom:14px">${escapeHtml(exam.description || "")} — مدت: ${exam.duration_minutes} دقیقه</div>
         <form id="examRunnerForm">
             ${exam.questions.map((q, i) => `
                 <div class="form-group" style="border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:14px">
-                    <label>${i + 1}. ${q.text}</label>
+                    <label>${i + 1}. ${escapeHtml(q.text)}</label>
                     <div style="margin-top:8px">${questionInput(q)}</div>
                     <button type="button" class="secondary-btn" style="margin-top:8px" onclick="saveAnswer(${attemptId}, ${q.id}, '${q.type}', this)">ذخیره این پاسخ</button>
                 </div>
@@ -618,10 +618,10 @@ async function renderGrades() {
         </div>
         ${report.subjects.map(s => `
             <div class="card" style="margin-bottom:14px">
-                <div class="card-head"><div class="card-title">${s.subject_name}</div><span class="status green">میانگین: ${s.average ?? "—"}</span></div>
+                <div class="card-head"><div class="card-title">${escapeHtml(s.subject_name)}</div><span class="status green">میانگین: ${s.average ?? "—"}</span></div>
                 <div class="table-wrap"><table>
                     <thead><tr><th>منبع</th><th>نمره</th><th>بازخورد</th></tr></thead>
-                    <tbody>${s.entries.map(e => `<tr><td>${e.source}</td><td>${e.score} / ${e.max_score}</td><td>${e.feedback || "—"}</td></tr>`).join("")}</tbody>
+                    <tbody>${s.entries.map(e => `<tr><td>${escapeHtml(e.source)}</td><td>${e.score} / ${e.max_score}</td><td>${escapeHtml(e.feedback || "—")}</td></tr>`).join("")}</tbody>
                 </table></div>
             </div>
         `).join("") || `<div class="card"><div class="page-subtitle">نمره‌ای ثبت نشده</div></div>`}
@@ -647,13 +647,13 @@ function printReportCard() {
             .avg { font-size: 15px; font-weight: bold; margin: 14px 0; }
         </style></head><body>
         <h1>کارنامه</h1>
-        <h2>${report.period ? report.period.name || "دوره‌ی جاری" : "بدون دوره‌ی نمره‌دهی"}</h2>
+        <h2>${escapeHtml(report.period ? report.period.name || "دوره‌ی جاری" : "بدون دوره‌ی نمره‌دهی")}</h2>
         <div class="avg">میانگین کل: ${report.overall_average ?? "—"}</div>
         ${report.subjects.map(s => `
-            <h3>${s.subject_name} — میانگین: ${s.average ?? "—"}</h3>
+            <h3>${escapeHtml(s.subject_name)} — میانگین: ${s.average ?? "—"}</h3>
             <table>
                 <thead><tr><th>منبع</th><th>نمره</th><th>بازخورد</th></tr></thead>
-                <tbody>${s.entries.map(e => `<tr><td>${e.source}</td><td>${e.score} / ${e.max_score}</td><td>${e.feedback || "—"}</td></tr>`).join("")}</tbody>
+                <tbody>${s.entries.map(e => `<tr><td>${escapeHtml(e.source)}</td><td>${e.score} / ${e.max_score}</td><td>${escapeHtml(e.feedback || "—")}</td></tr>`).join("")}</tbody>
             </table>
         `).join("")}
         </body></html>
@@ -676,9 +676,9 @@ async function renderMessages() {
         <div class="page-head"><div><div class="page-title">پیام‌ها</div><div class="page-subtitle">${conversations.length} گفتگو</div></div></div>
         <div class="module"><div class="module-body">
             ${conversations.map(c => `
-                <div class="activity" style="cursor:pointer" onclick="openConversation(${c.id}, '${(c.title || "گفتگو").replace(/'/g, "")}')">
+                <div class="activity" style="cursor:pointer" onclick="openConversation(${c.id}, ${escapeAttr(c.title || "گفتگو")})">
                     <div class="activity-icon">💬</div>
-                    <div><div class="activity-text"><b>${c.title || "گفتگو"}</b></div><div class="activity-time">${c.last_message || "پیامی ارسال نشده"}</div></div>
+                    <div><div class="activity-text"><b>${escapeHtml(c.title || "گفتگو")}</b></div><div class="activity-time">${escapeHtml(c.last_message || "پیامی ارسال نشده")}</div></div>
                 </div>
             `).join("") || `<div class="page-subtitle">گفتگویی وجود ندارد — معلم یا مدیر باید ابتدا گفتگو را شروع کند</div>`}
         </div></div>
@@ -689,7 +689,7 @@ async function openConversation(id, title) {
     const messages = await api.get(`/api/messages/messages?conversation_id=${id}`);
     openModal(title, `
         <div style="max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
-            ${messages.map(m => `<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:12px"><b>${m.sender_name || "کاربر"}</b><div style="margin-top:4px">${m.body}</div></div>`).join("") || `<div class="page-subtitle">پیامی وجود ندارد</div>`}
+            ${messages.map(m => `<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:12px"><b>${escapeHtml(m.sender_name || "کاربر")}</b><div style="margin-top:4px">${escapeHtml(m.body)}</div></div>`).join("") || `<div class="page-subtitle">پیامی وجود ندارد</div>`}
         </div>
         <form id="replyForm">
             <div class="form-group"><input class="form-input" name="body" placeholder="پیام..." required></div>
@@ -714,9 +714,9 @@ async function renderAnnouncements() {
         <div class="page-head"><div><div class="page-title">اطلاعیه‌ها</div><div class="page-subtitle">${announcements.length} اطلاعیه</div></div></div>
         ${announcements.map(a => `
             <div class="card" style="margin-bottom:14px">
-                <div class="card-head"><div class="card-title">${a.title}</div></div>
-                <div class="page-subtitle" style="margin-bottom:8px">${a.author_name} — ${formatJalaliDate(a.created_at)}</div>
-                <div style="font-size:13px;line-height:1.9">${a.body}</div>
+                <div class="card-head"><div class="card-title">${escapeHtml(a.title)}</div></div>
+                <div class="page-subtitle" style="margin-bottom:8px">${escapeHtml(a.author_name)} — ${formatJalaliDate(a.created_at)}</div>
+                <div style="font-size:13px;line-height:1.9">${escapeHtml(a.body)}</div>
             </div>
         `).join("") || `<div class="card"><div class="page-subtitle">اطلاعیه‌ای ثبت نشده</div></div>`}
     `;
@@ -731,8 +731,8 @@ async function renderProfile() {
     document.getElementById("content").innerHTML = `
         <div class="page-head"><div><div class="page-title">پروفایل</div><div class="page-subtitle">اطلاعات حساب کاربری</div></div></div>
         <div class="card" style="max-width:400px">
-            <div class="form-group"><label>نام کامل</label><div>${user.full_name}</div></div>
-            <div class="form-group"><label>شناسه مدرسه</label><div>${user.school_id}</div></div>
+            <div class="form-group"><label>نام کامل</label><div>${escapeHtml(user.full_name)}</div></div>
+            <div class="form-group"><label>شناسه مدرسه</label><div>${escapeHtml(user.school_id)}</div></div>
         </div>
         <div class="page-subtitle" style="margin-top:10px">اطلاعات بیشتر (نام کاربری، تلفن و ...) و امکان ویرایش پروفایل هنوز در API وجود ندارد.</div>
     `;

@@ -112,7 +112,7 @@ async function render(key) {
         else if (key === "grades") await renderGrades();
         else if (key === "messages") await renderMessages();
     } catch (e) {
-        content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${e.message}</div></div>`;
+        content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${escapeHtml(e.message)}</div></div>`;
     }
 }
 
@@ -169,7 +169,7 @@ async function renderDashboard() {
                 <div class="activity">
                     <div class="activity-icon">📝</div>
                     <div>
-                        <div class="activity-text"><b>${e.title}</b> — ${e.class_name} / ${e.subject_name}</div>
+                        <div class="activity-text"><b>${escapeHtml(e.title)}</b> — ${escapeHtml(e.class_name)} / ${escapeHtml(e.subject_name)}</div>
                         <div class="activity-time">${examStatusLabel(e.status)}</div>
                     </div>
                 </div>
@@ -202,7 +202,7 @@ async function renderClasses() {
             <table>
                 <thead><tr><th>کلاس</th><th>پایه</th><th>درس</th></tr></thead>
                 <tbody>
-                    ${assignments.map(a => `<tr><td>${a.class_name}</td><td>${a.grade || "—"}</td><td>${a.subject_name}</td></tr>`).join("") || `<tr><td colspan="3" style="text-align:center;color:var(--muted)">هنوز به کلاس/درسی متصل نشده‌اید — از مدیر مدرسه بخواهید شما را تخصیص دهد</td></tr>`}
+                    ${assignments.map(a => `<tr><td>${escapeHtml(a.class_name)}</td><td>${escapeHtml(a.grade || "—")}</td><td>${escapeHtml(a.subject_name)}</td></tr>`).join("") || `<tr><td colspan="3" style="text-align:center;color:var(--muted)">هنوز به کلاس/درسی متصل نشده‌اید — از مدیر مدرسه بخواهید شما را تخصیص دهد</td></tr>`}
                 </tbody>
             </table>
         </div></div>
@@ -230,13 +230,13 @@ async function renderAssignments() {
                 <tbody>
                     ${assignments.map(a => `
                         <tr>
-                            <td>${a.title}</td>
-                            <td>${a.class_name} / ${a.subject_name}</td>
-                            <td>${SUBMISSION_TYPE_LABELS[a.submission_type] || a.submission_type}</td>
+                            <td>${escapeHtml(a.title)}</td>
+                            <td>${escapeHtml(a.class_name)} / ${escapeHtml(a.subject_name)}</td>
+                            <td>${SUBMISSION_TYPE_LABELS[a.submission_type] || escapeHtml(a.submission_type)}</td>
                             <td>${formatJalaliDateTime(a.due_at)}</td>
                             <td>${a.submission_count}</td>
                             <td style="display:flex;gap:6px">
-                                <button class="secondary-btn" onclick="openSubmissionsList(${a.id}, '${a.title.replace(/'/g, "")}', '${a.submission_type}')">مشاهده پاسخ‌ها</button>
+                                <button class="secondary-btn" onclick="openSubmissionsList(${a.id}, ${escapeAttr(a.title)}, ${escapeAttr(a.submission_type)})">مشاهده پاسخ‌ها</button>
                                 <button class="secondary-btn" onclick="deleteAssignment(${a.id})">حذف</button>
                             </td>
                         </tr>
@@ -258,7 +258,7 @@ async function openAssignmentForm() {
             <div class="form-group"><label>عنوان</label><input class="form-input" name="title" required></div>
             <div class="form-group"><label>کلاس / درس</label>
                 <select class="form-input" name="combo" required>
-                    ${assignments.map(a => `<option value="${a.class_id}:${a.subject_id}">${a.class_name} — ${a.subject_name}</option>`).join("")}
+                    ${assignments.map(a => `<option value="${a.class_id}:${a.subject_id}">${escapeHtml(a.class_name)} — ${escapeHtml(a.subject_name)}</option>`).join("")}
                 </select>
             </div>
             <div class="form-group"><label>توضیحات (اختیاری)</label><textarea class="form-input" name="description" rows="2" style="height:auto;padding:10px 12px"></textarea></div>
@@ -410,17 +410,17 @@ async function openSubmissionsList(assignmentId, title, submissionType) {
         <div style="max-height:420px;overflow:auto">
             ${submissions.map(s => `
                 <div class="card" style="margin-bottom:10px">
-                    <div class="card-head"><div class="card-title">${s.student_name}</div>
+                    <div class="card-head"><div class="card-title">${escapeHtml(s.student_name)}</div>
                         <span class="status ${s.status === "graded" ? "green" : s.status === "late" ? "orange" : "orange"}">${submissionStatusLabel(s.status)}</span>
                     </div>
-                    ${s.body ? `<div style="font-size:12px;background:var(--surface2);border-radius:8px;padding:8px 10px;margin-bottom:8px">${s.body}</div>` : ""}
+                    ${s.body ? `<div style="font-size:12px;background:var(--surface2);border-radius:8px;padding:8px 10px;margin-bottom:8px">${escapeHtml(s.body)}</div>` : ""}
                     ${!isAutoGraded && s.answer_data ? renderAnswerPreview(s) : ""}
                     ${isAutoGraded
                         ? `<div class="page-subtitle">نمره‌ی خودکار: ${s.score ?? "—"}</div>`
-                        : `<form onsubmit="return submitAssignmentGrade(event, ${s.id}, ${assignmentId}, '${title.replace(/'/g, "")}', '${submissionType}')">
+                        : `<form onsubmit="return submitAssignmentGrade(event, ${s.id}, ${assignmentId}, ${escapeAttr(title)}, ${escapeAttr(submissionType)})">
                         <div class="form-group" style="display:flex;gap:8px">
                             <input class="form-input" name="score" type="number" min="0" placeholder="نمره" value="${s.score ?? ""}" required style="max-width:110px">
-                            <input class="form-input" name="feedback" placeholder="بازخورد" value="${s.feedback || ""}">
+                            <input class="form-input" name="feedback" placeholder="بازخورد" value="${escapeHtml(s.feedback || "")}">
                             <button type="submit" class="secondary-btn">ثبت</button>
                         </div>
                     </form>`}
@@ -469,8 +469,8 @@ async function renderExams() {
                 <tbody>
                     ${exams.map(e => `
                         <tr>
-                            <td>${e.title}</td>
-                            <td>${e.class_name} / ${e.subject_name}</td>
+                            <td>${escapeHtml(e.title)}</td>
+                            <td>${escapeHtml(e.class_name)} / ${escapeHtml(e.subject_name)}</td>
                             <td><span class="status ${examStatusColor(e.status)}">${examStatusLabel(e.status)}</span></td>
                             <td style="display:flex;gap:6px;flex-wrap:wrap">
                                 <button class="secondary-btn" onclick="openExamQuestions(${e.id})">سؤالات</button>
@@ -497,7 +497,7 @@ async function openExamForm() {
             <div class="form-group"><label>عنوان آزمون</label><input class="form-input" name="title" required></div>
             <div class="form-group"><label>کلاس / درس</label>
                 <select class="form-input" name="combo" required>
-                    ${assignments.map(a => `<option value="${a.class_id}:${a.subject_id}">${a.class_name} — ${a.subject_name}</option>`).join("")}
+                    ${assignments.map(a => `<option value="${a.class_id}:${a.subject_id}">${escapeHtml(a.class_name)} — ${escapeHtml(a.subject_name)}</option>`).join("")}
                 </select>
             </div>
             <div class="form-group"><label>توضیحات (اختیاری)</label><textarea class="form-input" name="description" rows="2" style="height:auto;padding:10px 12px"></textarea></div>
@@ -553,12 +553,12 @@ async function openExamQuestions(examId) {
     cache.questions = bank;
     const exam = exams.find(e => e.id === examId);
 
-    openModal(`سؤالات آزمون: ${exam ? exam.title : ""}`, `
+    openModal(`سؤالات آزمون: ${escapeHtml(exam ? exam.title : "")}`, `
         <div class="page-subtitle" style="margin-bottom:12px">یک سؤال از بانک سؤال انتخاب کن و به این آزمون اضافه کن (فقط برای آزمون پیش‌نویس).</div>
         <form id="attachForm">
             <div class="form-group"><label>سؤال</label>
                 <select class="form-input" name="question_id" required>
-                    ${bank.map(q => `<option value="${q.id}">${q.text.slice(0, 60)}</option>`).join("") || `<option disabled>بانک سؤال خالی است</option>`}
+                    ${bank.map(q => `<option value="${q.id}">${escapeHtml(q.text.slice(0, 60))}</option>`).join("") || `<option disabled>بانک سؤال خالی است</option>`}
                 </select>
             </div>
             <div class="form-group"><label>نمره این سؤال</label><input class="form-input" name="score" type="number" min="1" value="10"></div>
@@ -602,7 +602,7 @@ async function renderQuestions() {
                 <tbody>
                     ${questions.map(q => `
                         <tr>
-                            <td>${q.text}</td>
+                            <td>${escapeHtml(q.text)}</td>
                             <td>${questionTypeLabel(q.type)}</td>
                             <td><span class="status ${["multiple_choice","true_false","numeric"].includes(q.type) ? "green" : "orange"}">${["multiple_choice","true_false","numeric"].includes(q.type) ? "خودکار" : "دستی"}</span></td>
                             <td>${q.used_in_exam
@@ -643,7 +643,7 @@ async function openImportHtmlForm() {
             <label>کلاس مقصد (فقط برای تکلیف‌های داخل فایل)</label>
             <select id="importHtmlClass" class="form-input">
                 <option value="">— انتخاب نشده —</option>
-                ${uniqueClasses.map(c => `<option value="${c.class_id}">${c.class_name}</option>`).join("")}
+                ${uniqueClasses.map(c => `<option value="${c.class_id}">${escapeHtml(c.class_name)}</option>`).join("")}
             </select>
         </div>
         <div id="importHtmlResult"></div>
@@ -669,13 +669,13 @@ function submitImportHtml() {
             if (res.skipped && res.skipped.length) {
                 html += `<div class="page-subtitle" style="margin-top:8px">موارد رد شده:</div>
                     <ul style="margin:6px 0 0;padding-inline-start:20px;font-size:13px;color:var(--muted)">
-                        ${res.skipped.map(s => `<li>مورد شماره ${s.index + 1}: ${s.reason}</li>`).join("")}
+                        ${res.skipped.map(s => `<li>مورد شماره ${s.index + 1}: ${escapeHtml(s.reason)}</li>`).join("")}
                     </ul>`;
             }
             resultBox.innerHTML = html;
             cache.questions = null; cache.assignments = null;
         } catch (e) {
-            resultBox.innerHTML = `<div class="page-subtitle" style="color:var(--red)">${e.message}</div>`;
+            resultBox.innerHTML = `<div class="page-subtitle" style="color:var(--red)">${escapeHtml(e.message)}</div>`;
         }
     };
     reader.readAsText(file, "UTF-8");
@@ -695,7 +695,7 @@ function openQuestionForm(existing) {
                 </select>
                 ${isEdit ? `<div class="page-subtitle">نوع سؤال بعد از ساخت قابل تغییر نیست.</div>` : ""}
             </div>
-            <div class="form-group"><label>متن سؤال</label><textarea class="form-input" name="text" rows="2" style="height:auto;padding:10px 12px" required>${isEdit ? existing.text : ""}</textarea></div>
+            <div class="form-group"><label>متن سؤال</label><textarea class="form-input" name="text" rows="2" style="height:auto;padding:10px 12px" required>${isEdit ? escapeHtml(existing.text) : ""}</textarea></div>
             <div class="form-group"><label>شناسه درس (اختیاری)</label><input class="form-input" name="subject_id" type="number" value="${isEdit && existing.subject_id ? existing.subject_id : ""}"></div>
             <div id="typeFields"></div>
             <div class="modal-footer">
@@ -744,7 +744,7 @@ function onQuestionTypeChange(existing) {
             return `
             <div class="form-group" style="display:flex;gap:8px;align-items:center">
                 <input type="radio" name="correct_idx" value="${i}" ${checked ? "checked" : ""}>
-                <input class="form-input" name="opt_text" placeholder="گزینه ${i + 1}" value="${opt ? opt.text : ""}" ${i < 2 ? "required" : ""}>
+                <input class="form-input" name="opt_text" placeholder="گزینه ${i + 1}" value="${opt ? escapeHtml(opt.text) : ""}" ${i < 2 ? "required" : ""}>
             </div>
         `; }).join("") + `<div class="page-subtitle">گزینه‌ی درست را با دکمه‌ی رادیویی مشخص کن. حداقل ۲ گزینه لازم است.</div>`;
     } else if (type === "true_false") {
@@ -757,7 +757,7 @@ function onQuestionTypeChange(existing) {
             <div class="form-group"><label>بازه‌ی مجاز خطا (اختیاری)</label><input class="form-input" name="numeric_tolerance" type="number" step="any" value="${existing ? existing.numeric_tolerance ?? 0 : 0}"></div>
         `;
     } else {
-        box.innerHTML = `<div class="form-group"><label>متن مرجع برای تصحیح دستی (اختیاری)</label><textarea class="form-input" name="correct_text" rows="2" style="height:auto;padding:10px 12px">${existing ? existing.correct_text || "" : ""}</textarea></div>`;
+        box.innerHTML = `<div class="form-group"><label>متن مرجع برای تصحیح دستی (اختیاری)</label><textarea class="form-input" name="correct_text" rows="2" style="height:auto;padding:10px 12px">${existing ? escapeHtml(existing.correct_text || "") : ""}</textarea></div>`;
     }
 }
 
@@ -775,7 +775,7 @@ async function renderGrading() {
         <div class="form-group" style="max-width:320px"><label>انتخاب آزمون</label>
             <select class="form-input" id="gradingExamSelect" onchange="loadGradingQueue(this.value)">
                 <option value="">— انتخاب کنید —</option>
-                ${gradeable.map(e => `<option value="${e.id}">${e.title}</option>`).join("")}
+                ${gradeable.map(e => `<option value="${e.id}">${escapeHtml(e.title)}</option>`).join("")}
             </select>
         </div>
         <div id="gradingQueue"></div>
@@ -791,15 +791,15 @@ async function loadGradingQueue(examId) {
         api.get(`/api/teacher/grading?exam_id=${examId}`),
         loadStudents(),
     ]);
-    const nameOf = (id) => students.find(s => s.id === id)?.full_name || `دانش‌آموز #${id}`;
+    const nameOf = (id) => escapeHtml(students.find(s => s.id === id)?.full_name || `دانش‌آموز #${id}`);
 
     box.innerHTML = pending.length === 0
         ? `<div class="card"><div class="page-subtitle">پاسخ بی‌نمره‌ای باقی نمانده</div></div>`
         : pending.map(a => `
             <div class="card" style="margin-bottom:12px">
                 <div class="card-head"><div class="card-title">${nameOf(a.student_id)}</div></div>
-                <div class="page-subtitle" style="margin-bottom:6px">${a.question_text}</div>
-                <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:12px;margin-bottom:12px">${a.text_answer || "(پاسخی ثبت نشده)"}</div>
+                <div class="page-subtitle" style="margin-bottom:6px">${escapeHtml(a.question_text)}</div>
+                <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:12px;margin-bottom:12px">${escapeHtml(a.text_answer || "(پاسخی ثبت نشده)")}</div>
                 <form onsubmit="return submitGrade(event, ${a.answer_id}, ${examId})">
                     <div class="form-group" style="display:flex;gap:10px">
                         <input class="form-input" name="score" type="number" min="0" placeholder="نمره" required style="max-width:120px">
@@ -832,7 +832,7 @@ async function renderAttendance() {
         <div class="form-group" style="max-width:320px"><label>کلاس</label>
             <select class="form-input" id="attClassSelect" onchange="loadAttendanceSessions(this.value)">
                 <option value="">— انتخاب کنید —</option>
-                ${classes.map(c => `<option value="${c.id}">${c.name}</option>`).join("")}
+                ${classes.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}
             </select>
         </div>
         <div id="attendanceBox"></div>
@@ -874,7 +874,7 @@ async function openAttendanceSession(sessionId) {
         <form id="attendanceForm">
             ${records.map(r => `
                 <div class="form-group" style="display:flex;justify-content:space-between;align-items:center">
-                    <span>${r.full_name}</span>
+                    <span>${escapeHtml(r.full_name)}</span>
                     <select class="form-input" name="status_${r.student_id}" style="width:140px">
                         ${Object.entries(STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${r.status === v ? "selected" : ""}>${l}</option>`).join("")}
                     </select>
@@ -907,7 +907,7 @@ async function renderGrades() {
         <div style="display:flex;gap:12px;margin-bottom:16px;align-items:flex-end">
             <div class="form-group" style="max-width:280px;margin-bottom:0"><label>کلاس / درس</label>
                 <select class="form-input" id="gradesComboSelect">
-                    ${assignments.map(a => `<option value="${a.class_id}:${a.subject_id}">${a.class_name} — ${a.subject_name}</option>`).join("")}
+                    ${assignments.map(a => `<option value="${a.class_id}:${a.subject_id}">${escapeHtml(a.class_name)} — ${escapeHtml(a.subject_name)}</option>`).join("")}
                 </select>
             </div>
             <button class="primary-btn" onclick="loadGrades()">نمایش</button>
@@ -930,7 +930,7 @@ async function loadGrades() {
             <table>
                 <thead><tr><th>دانش‌آموز</th><th>نمره</th><th>منبع</th></tr></thead>
                 <tbody>
-                    ${grades.map(g => `<tr><td>${g.student_name}</td><td>${g.score} / ${g.max_score}</td><td>${g.source}</td></tr>`).join("") || `<tr><td colspan="3" style="text-align:center;color:var(--muted)">نمره‌ای ثبت نشده</td></tr>`}
+                    ${grades.map(g => `<tr><td>${escapeHtml(g.student_name)}</td><td>${g.score} / ${g.max_score}</td><td>${escapeHtml(g.source)}</td></tr>`).join("") || `<tr><td colspan="3" style="text-align:center;color:var(--muted)">نمره‌ای ثبت نشده</td></tr>`}
                 </tbody>
             </table>
         </div></div>
@@ -942,7 +942,7 @@ async function openGradeForm(classId, subjectId) {
     openModal("ثبت نمره جدید", `
         <form id="gradeForm">
             <div class="form-group"><label>دانش‌آموز</label>
-                <select class="form-input" name="student_id" required>${students.map(s => `<option value="${s.id}">${s.full_name}</option>`).join("") || ""}</select>
+                <select class="form-input" name="student_id" required>${students.map(s => `<option value="${s.id}">${escapeHtml(s.full_name)}</option>`).join("") || ""}</select>
                 ${students.length === 0 ? `<div class="page-subtitle" style="margin-top:4px">دانش‌آموزی در این کلاس ثبت‌نام نشده</div>` : ""}
             </div>
             <div class="form-group"><label>نمره</label><input class="form-input" name="score" type="number" step="any" required></div>
@@ -984,11 +984,11 @@ async function renderMessages() {
         </div>
         <div class="module"><div class="module-body">
             ${conversations.map(c => `
-                <div class="activity" style="cursor:pointer" onclick="openConversation(${c.id}, '${(c.title || "گفتگو").replace(/'/g, "")}')">
+                <div class="activity" style="cursor:pointer" onclick="openConversation(${c.id}, ${escapeAttr(c.title || "گفتگو")})">
                     <div class="activity-icon">💬</div>
                     <div>
-                        <div class="activity-text"><b>${c.title || (c.type === "direct" ? "گفتگوی مستقیم" : "گروه")}</b></div>
-                        <div class="activity-time">${c.last_message || "پیامی ارسال نشده"}</div>
+                        <div class="activity-text"><b>${escapeHtml(c.title || (c.type === "direct" ? "گفتگوی مستقیم" : "گروه"))}</b></div>
+                        <div class="activity-time">${escapeHtml(c.last_message || "پیامی ارسال نشده")}</div>
                     </div>
                 </div>
             `).join("") || `<div class="page-subtitle">گفتگویی وجود ندارد</div>`}
@@ -1001,7 +1001,7 @@ async function openNewConversationForm() {
     openModal("گفتگوی جدید با یک دانش‌آموز", `
         <form id="newConvForm">
             <div class="form-group"><label>دانش‌آموز</label>
-                <select class="form-input" name="student_user_id" required>${students.map(s => `<option value="${s.user_id}">${s.full_name}</option>`).join("")}</select>
+                <select class="form-input" name="student_user_id" required>${students.map(s => `<option value="${s.user_id}">${escapeHtml(s.full_name)}</option>`).join("")}</select>
             </div>
             <div class="form-group"><label>پیام اول</label><textarea class="form-input" name="body" rows="3" style="height:auto;padding:10px 12px" required></textarea></div>
             <div class="modal-footer">
@@ -1030,7 +1030,7 @@ async function openConversation(id, title) {
     const messages = await api.get(`/api/messages/messages?conversation_id=${id}`);
     openModal(title, `
         <div style="max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
-            ${messages.map(m => `<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:12px"><b>${m.sender_name || "کاربر"}</b><div style="margin-top:4px">${m.body}</div></div>`).join("") || `<div class="page-subtitle">پیامی وجود ندارد</div>`}
+            ${messages.map(m => `<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:12px"><b>${escapeHtml(m.sender_name || "کاربر")}</b><div style="margin-top:4px">${escapeHtml(m.body)}</div></div>`).join("") || `<div class="page-subtitle">پیامی وجود ندارد</div>`}
         </div>
         <form id="replyForm">
             <div class="form-group"><input class="form-input" name="body" placeholder="پیام..." required></div>
