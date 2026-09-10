@@ -5,10 +5,19 @@
 
 const SESSION_KEY = "madrese_session";
 
+/**
+ * Session storage is per-TAB (sessionStorage), not shared across the whole
+ * browser (localStorage) -- intentional: it lets you have e.g. the teacher
+ * dashboard open in one tab and the student dashboard open in another tab
+ * at the same time, each with its own independent login. The trade-off is
+ * that each new tab needs its own login (a session doesn't automatically
+ * follow you into a freshly opened tab), which is normal/expected.
+ */
+
 /** Reads the current session ({ token, expires_at, user, roles }) or null. */
 function getSession() {
     try {
-        const raw = localStorage.getItem(SESSION_KEY);
+        const raw = sessionStorage.getItem(SESSION_KEY);
         return raw ? JSON.parse(raw) : null;
     } catch {
         return null;
@@ -16,11 +25,11 @@ function getSession() {
 }
 
 function setSession(session) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
 function clearSession() {
-    localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
 }
 
 /**
