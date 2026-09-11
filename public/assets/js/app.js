@@ -130,6 +130,36 @@ function lightenColor(hex, amount) {
     return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
 
+/**
+ * Mounts a teacher-imported question's original HTML (colors/layout/icons --
+ * whatever the AI-generated file looked like) inside `container`, in a
+ * fully sandboxed <iframe> so nothing in it can run: `sandbox=""` blocks
+ * script execution, form submission, top-level navigation and popups, and
+ * the iframe gets its own opaque origin (no access to this page's session
+ * or storage even if something in the imported HTML tried). This is
+ * intentionally NOT a general-purpose HTML sanitizer -- the sandbox is what
+ * makes embedding fairly permissive HTML/CSS safe. Height is fixed with
+ * internal scrolling rather than measured from the iframe's content,
+ * because a sandboxed iframe without "allow-same-origin" can't be
+ * introspected from the parent page (that's the security boundary working
+ * as intended, not a bug to work around).
+ * @param {HTMLElement} container empty element to mount into
+ * @param {string|null} styleBlock shared <style> content for this assignment (or null)
+ * @param {string|null} blockHtml this question's sanitized original HTML block (or null)
+ */
+function mountPromptFrame(container, styleBlock, blockHtml) {
+    if (!container || !blockHtml) return;
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("sandbox", "");
+    iframe.style.cssText = "width:100%;height:260px;border:0;border-radius:10px;background:#fff;display:block";
+    container.innerHTML = "";
+    container.appendChild(iframe);
+    iframe.srcdoc = `<!doctype html><html dir="rtl" lang="fa"><head><meta charset="utf-8">
+        <style>body{margin:0;padding:12px;font-family:inherit;overflow:auto}</style>
+        <style>${styleBlock || ""}</style>
+        </head><body>${blockHtml}</body></html>`;
+}
+
 function toast(message, isError = false) {
     let box = document.getElementById("__toast");
     if (!box) {

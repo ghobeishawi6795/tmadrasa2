@@ -231,11 +231,11 @@ async function renderAssignments() {
                         <tr>
                             <td>${escapeHtml(a.title)}</td>
                             <td>${escapeHtml(a.class_name)} / ${escapeHtml(a.subject_name)}</td>
-                            <td>${SUBMISSION_TYPE_LABELS[a.submission_type] || escapeHtml(a.submission_type)}</td>
+                            <td>${a.is_multi_question ? `چندسؤالی (${a.question_count} سؤال)` : (SUBMISSION_TYPE_LABELS[a.submission_type] || escapeHtml(a.submission_type))}</td>
                             <td>${formatJalaliDateTime(a.due_at)}</td>
                             <td>${a.submission_count}</td>
                             <td style="display:flex;gap:6px">
-                                <button class="secondary-btn" onclick="openSubmissionsList(${a.id}, ${escapeAttr(a.title)}, ${escapeAttr(a.submission_type)})">مشاهده پاسخ‌ها</button>
+                                <button class="secondary-btn" onclick="${a.is_multi_question ? `openMultiSubmissionsList(${a.id}, ${escapeAttr(a.title)})` : `openSubmissionsList(${a.id}, ${escapeAttr(a.title)}, ${escapeAttr(a.submission_type)})`}">مشاهده پاسخ‌ها</button>
                                 <button class="secondary-btn" onclick="deleteAssignment(${a.id})">حذف</button>
                             </td>
                         </tr>
@@ -449,6 +449,71 @@ async function submitAssignmentGrade(event, submissionId, assignmentId, title) {
     return false;
 }
 
+/* -- multi-question assignments (imported from HTML with several questions) -- */
+
+async function openMultiSubmissionsList(assignmentId, title) {
+    const submissions = await api.get(`/api/teacher/submissions?assignment_id=${assignmentId}`);
+    openModal(`پاسخ‌های: ${title}`, `
+        <div style="max-height:420px;overflow:auto">
+            ${submissions.map(s => `
+                <div class="card" style="margin-bottom:10px">
+                    <div class="card-head"><div class="card-title">${escapeHtml(s.student_name)}</div>
+                        <span class="status ${s.status === "graded" ? "green" : "orange"}">${submissionStatusLabel(s.status)}${s.status === "graded" ? ` — ${s.score}` : ""}</span>
+                    </div>
+                    <button class="secondary-btn" onclick="openMultiSubmissionAnswers(${s.id}, ${escapeAttr(title)})">مشاهده / تصحیح سؤال‌ها</button>
+                </div>
+            `).join("") || `<div class="page-subtitle">هنوز پاسخی ارسال نشده</div>`}
+        </div>
+        <div class="modal-footer"><button class="secondary-btn" onclick="closeModal()">بستن</button></div>
+    `);
+}
+
+async function openMultiSubmissionAnswers(submissionId, assignmentTitle) {
+    const data = await api.get(`/api/teacher/submission-answers?submission_id=${submissionId}`);
+    const { submission, answers } = data;
+
+    openModal(`سؤال‌های: ${assignmentTitle}`, `
+        <div style="max-height:460px;overflow:auto">
+            ${answers.map((a, i) => `
+                <div class="card" style="margin-bottom:12px">
+                    <div class="page-subtitle" style="margin-bottom:6px">سؤال ${i + 1} — ${SUBMISSION_TYPE_LABELS[a.submission_type] || a.submission_type}</div>
+                    <div id="tqFrame_${a.answer_id}" style="margin-bottom:8px"></div>
+                    ${a.prompt_text ? `<div class="page-subtitle" style="margin-bottom:8px">${escapeHtml(a.prompt_text)}</div>` : ""}
+                    ${renderAnswerPreview({ answer_data: a.answer_data || "" })}
+                    ${!["match", "drag_drop"].includes(a.submission_type) && a.answer_data && !a.answer_data.startsWith("data:")
+                        ? `<div style="font-size:12px;background:var(--surface2);border-radius:8px;padding:8px 10px;margin-bottom:8px">${escapeHtml(a.answer_data)}</div>`
+                        : ""}
+                    ${["match", "drag_drop"].includes(a.submission_type)
+                        ? `<div class="page-subtitle">نمره‌ی خودکار: ${a.score ?? "—"} از ${a.max_score}</div>`
+                        : `<form onsubmit="return submitMultiAnswerGrade(event, ${a.answer_id}, ${submissionId}, ${escapeAttr(assignmentTitle)})">
+                            <div class="form-group" style="display:flex;gap:8px">
+                                <input class="form-input" name="score" type="number" min="0" max="${a.max_score}" step="0.01" placeholder="نمره از ${a.max_score}" value="${a.score ?? ""}" required style="max-width:130px">
+                                <input class="form-input" name="feedback" placeholder="بازخورد" value="${escapeHtml(a.feedback || "")}">
+                                <button type="submit" class="secondary-btn">ثبت</button>
+                            </div>
+                        </form>`}
+                </div>
+            `).join("")}
+        </div>
+        <div class="page-subtitle" style="margin-top:6px">وضعیت کلی: ${submissionStatusLabel(submission.status)}${submission.status === "graded" ? ` — نمره‌ی نهایی: ${submission.score}` : " (تا تصحیح همه‌ی سؤال‌های دستی، نمره‌ی نهایی محاسبه نمی‌شود)"}</div>
+        <div class="modal-footer"><button class="secondary-btn" onclick="closeModal()">بستن</button></div>
+    `);
+
+    answers.forEach(a => {
+        if (a.prompt_html) mountPromptFrame(document.getElementById(`tqFrame_${a.answer_id}`), submission.assignment_prompt_style, a.prompt_html);
+    });
+}
+
+async function submitMultiAnswerGrade(event, answerId, submissionId, assignmentTitle) {
+    event.preventDefault();
+    const fd = new FormData(event.target);
+    await withToast(() => api.post("/api/teacher/submission-answers", {
+        answer_id: answerId, score: Number(fd.get("score")), feedback: fd.get("feedback") || null,
+    }), "نمره ثبت شد");
+    openMultiSubmissionAnswers(submissionId, assignmentTitle);
+    return false;
+}
+
 /* =========================================================
    EXAMS
 ========================================================= */
@@ -645,9 +710,31 @@ async function openImportHtmlForm() {
                 ${uniqueClasses.map(c => `<option value="${c.class_id}">${escapeHtml(c.class_name)}</option>`).join("")}
             </select>
         </div>
+        <div id="importHtmlPreview"></div>
         <div id="importHtmlResult"></div>
-        <button class="primary-btn" style="margin-top:10px" onclick="submitImportHtml()">وارد کردن</button>
+        <div style="display:flex;gap:8px;margin-top:10px">
+            <button type="button" class="secondary-btn" onclick="previewImportHtml()">👁️ پیش‌نمایش ظاهر فایل</button>
+            <button class="primary-btn" onclick="submitImportHtml()">وارد کردن</button>
+        </div>
     `);
+}
+
+function previewImportHtml() {
+    const fileInput = document.getElementById("importHtmlFile");
+    const file = fileInput.files[0];
+    if (!file) { toast("یک فایل HTML انتخاب کن", true); return; }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+        const box = document.getElementById("importHtmlPreview");
+        box.innerHTML = `<div class="page-subtitle" style="margin:8px 0">این دقیقاً همون ظاهریه که دانش‌آموز برای هر سؤال می‌بینه:</div><div id="importHtmlPreviewFrame"></div>`;
+        const iframe = document.createElement("iframe");
+        iframe.setAttribute("sandbox", "");
+        iframe.style.cssText = "width:100%;height:360px;border:1px solid var(--line);border-radius:10px;background:#fff;display:block";
+        document.getElementById("importHtmlPreviewFrame").appendChild(iframe);
+        iframe.srcdoc = reader.result; // raw uploaded file, exactly as-is -- teacher-only, fully sandboxed
+    };
+    reader.readAsText(file, "UTF-8");
 }
 
 function submitImportHtml() {

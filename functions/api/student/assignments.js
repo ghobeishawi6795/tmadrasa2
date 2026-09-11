@@ -15,7 +15,9 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const db = q(env);
     const rows = await db.all(
         `SELECT a.id, a.title, a.description, a.due_at, a.allow_late, a.max_attempts, a.max_score,
-                a.submission_type, a.question_payload, s.name as subject_name, c.name as class_name,
+                a.submission_type, a.question_payload, a.is_multi_question,
+                (SELECT COUNT(*) FROM assignment_questions aq WHERE aq.assignment_id = a.id) as question_count,
+                s.name as subject_name, c.name as class_name,
                 sub.id as submission_id, sub.status as submission_status,
                 sub.score as submission_score, sub.attempt_number as submission_attempt_number
            FROM assignments a

@@ -25,7 +25,8 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const db = q(env);
     const rows = await db.all(
         `SELECT a.*, c.name as class_name, s.name as subject_name,
-                (SELECT COUNT(*) FROM submissions sub WHERE sub.assignment_id = a.id) as submission_count
+                (SELECT COUNT(*) FROM submissions sub WHERE sub.assignment_id = a.id) as submission_count,
+                (SELECT COUNT(*) FROM assignment_questions aq WHERE aq.assignment_id = a.id) as question_count
            FROM assignments a
            JOIN classes c ON c.id = a.class_id
            JOIN subjects s ON s.id = a.subject_id

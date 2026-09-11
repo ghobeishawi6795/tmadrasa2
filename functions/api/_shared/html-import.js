@@ -1,18 +1,28 @@
-// Parses the fixed "AI-generated question/assignment" HTML template into
+// Parses the "AI-generated question/assignment" HTML template into
 // structured items ready for insertion into `questions` or `assignments`.
-// The template is intentionally simple (plain divs/lists with data-*
-// attributes) specifically so an LLM can reproduce it exactly from a prompt
-// -- see docs for the prompt text given to teachers. This is NOT a general
-// HTML parser; it only understands this one fixed shape.
+// The template's REQUIRED elements (data-* attributes, q-text/q-answer/
+// q-options/q-pairs/q-buckets/q-items) are still a fixed shape -- this is
+// NOT a general HTML parser -- but as of the multi-question/colorful-preview
+// feature, the file is allowed to contain decorative wrapper <div>s, extra
+// classes, inline styles, and a shared <style> block around/alongside those
+// required elements, so an AI-generated file can look like a real page
+// instead of dry unstyled text. See docs/راهنمای-وارد-کردن-html.md.
 
-const BLOCK_RE = /<div\s+class="question"([^>]*)>([\s\S]*?)<\/div>/gi;
-const ATTR_RE = /data-([\w-]+)\s*=\s*"([^"]*)"/g;
+const CLASS_ATTR_RE = /class\s*=\s*"([^"]*)"/i;
+const DIV_TAG_RE = /<(\/?)div\b[^>]*>/gi;
+const STYLE_RE = /<style[^>]*>([\s\S]*?)<\/style>/gi;
+
+function hasClass(attrString, className) {
+    const m = attrString.match(CLASS_ATTR_RE);
+    if (!m) return false;
+    return m[1].trim().split(/\s+/).includes(className);
+}
 
 function parseAttrs(attrString) {
     const attrs = {};
+    const re = /data-([\w-]+)\s*=\s*"([^"]*)"/g;
     let m;
-    ATTR_RE.lastIndex = 0;
-    while ((m = ATTR_RE.exec(attrString))) attrs[m[1]] = m[2];
+    while ((m = re.exec(attrString))) attrs[m[1]] = m[2];
     return attrs;
 }
 
@@ -27,33 +37,108 @@ function stripTags(html) {
         .trim();
 }
 
+// Strips anything that could execute or reach out over the network from
+// HTML we're going to store and later render (in a sandboxed iframe with no
+// script execution anyway -- this is defense in depth, not the only guard).
+function sanitizeDecorativeHtml(html) {
+    if (!html) return html;
+    return html
+        .replace(/<script[\s\S]*?<\/script>/gi, "")
+        .replace(/<link\b[^>]*>/gi, "")
+        .replace(/@import[^;]+;/gi, "")
+        .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
+        .replace(/\son\w+\s*=\s*'[^']*'/gi, "")
+        .replace(/javascript\s*:/gi, "blocked:");
+}
+
+// match/drag_drop questions already render through our own secure widget
+// (shuffled ids, answer key never sent to the client -- see
+// _shared/interactive.js's sanitizeForStudent()). The raw imported HTML for
+// these two types still contains the actual correct pairing/bucket in
+// data-left/data-right/data-bucket attributes, so those specific lists must
+// never be forwarded to the student as decorative HTML, or the answer key
+// leaks straight through the page source.
+function stripAnswerRevealingLists(html, submissionType) {
+    if (submissionType !== "match" && submissionType !== "drag_drop") return html;
+    return html
+        .replace(/<ul\b[^>]*class="[^"]*\bq-pairs\b[^"]*"[^>]*>[\s\S]*?<\/ul>/gi, "")
+        .replace(/<ul\b[^>]*class="[^"]*\bq-buckets\b[^"]*"[^>]*>[\s\S]*?<\/ul>/gi, "")
+        .replace(/<ul\b[^>]*class="[^"]*\bq-items\b[^"]*"[^>]*>[\s\S]*?<\/ul>/gi, "");
+}
+
+// Finds every top-level <div> whose class list includes "question" and
+// returns its full outer HTML + inner HTML, using a depth-tracking scan
+// (not a single non-greedy regex) so a block containing nested <div>s --
+// which colorful/decorated question HTML almost always does -- is captured
+// in full instead of being silently truncated at the first nested </div>.
+function findQuestionBlocks(html) {
+    const blocks = [];
+    const openRe = /<div\b([^>]*)>/gi;
+    let m;
+    while ((m = openRe.exec(html))) {
+        if (!hasClass(m[1], "question")) continue;
+
+        const innerStart = m.index + m[0].length;
+        DIV_TAG_RE.lastIndex = innerStart;
+        let depth = 1, closeTag = null, t;
+        while ((t = DIV_TAG_RE.exec(html))) {
+            if (t[1] === "/") { depth--; if (depth === 0) { closeTag = t; break; } }
+            else depth++;
+        }
+        if (!closeTag) continue; // malformed/unclosed block -- skip it silently
+
+        const inner = html.slice(innerStart, closeTag.index);
+        const fullMatch = html.slice(m.index, closeTag.index + closeTag[0].length);
+        blocks.push({ attrs: parseAttrs(m[1]), inner, fullMatch });
+
+        openRe.lastIndex = closeTag.index + closeTag[0].length;
+    }
+    return blocks;
+}
+
 function extractText(html, className) {
-    const re = new RegExp(`<p\\s+class="${className}"[^>]*>([\\s\\S]*?)<\\/p>`, "i");
-    const m = html.match(re);
-    return m ? stripTags(m[1]) : null;
+    const re = /<(p|div|span|h[1-6])\b([^>]*)>([\s\S]*?)<\/\1>/gi;
+    let m;
+    while ((m = re.exec(html))) {
+        if (hasClass(m[2], className)) return stripTags(m[3]);
+    }
+    return null;
 }
 
 function extractListItems(html, ulClassName) {
-    const ulRe = new RegExp(`<ul\\s+class="${ulClassName}"[^>]*>([\\s\\S]*?)<\\/ul>`, "i");
-    const ulMatch = html.match(ulRe);
-    if (!ulMatch) return [];
+    const re = /<ul\b([^>]*)>([\s\S]*?)<\/ul>/gi;
+    let m, ulInner = null;
+    while ((m = re.exec(html))) {
+        if (hasClass(m[1], ulClassName)) { ulInner = m[2]; break; }
+    }
+    if (ulInner === null) return [];
     const liRe = /<li([^>]*)>([\s\S]*?)<\/li>/gi;
     const items = [];
-    let m;
-    while ((m = liRe.exec(ulMatch[1]))) items.push({ attrs: parseAttrs(m[1]), text: stripTags(m[2]) });
+    let lm;
+    while ((lm = liRe.exec(ulInner))) items.push({ attrs: parseAttrs(lm[1]), text: stripTags(lm[2]) });
     return items;
 }
 
-/** Returns an array of parsed items, each either a usable item or `{ error }`. */
+/**
+ * Returns { items, styleBlock }. `items` is an array of parsed items, each
+ * either a usable item or `{ error }`. `styleBlock` is every <style> tag's
+ * content found anywhere in the file, concatenated -- shared across every
+ * assignment question bundled from this one file (see import-html.js).
+ */
 export function parseImportHtml(html) {
-    const blocks = [];
-    let m;
-    BLOCK_RE.lastIndex = 0;
-    while ((m = BLOCK_RE.exec(html))) blocks.push({ attrs: parseAttrs(m[1]), inner: m[2] });
-    return blocks.map((b, i) => parseOneItem(b, i));
+    const blocks = findQuestionBlocks(html);
+    const items = blocks.map((b, i) => parseOneItem(b, i));
+
+    let styleBlock = "";
+    let sm;
+    STYLE_RE.lastIndex = 0;
+    while ((sm = STYLE_RE.exec(html))) styleBlock += sm[1] + "\n";
+    styleBlock = sanitizeDecorativeHtml(styleBlock).trim();
+
+    return { items, styleBlock: styleBlock || null };
 }
 
-function parseOneItem({ attrs, inner }, index) {
+function parseOneItem({ attrs, inner, fullMatch }, index) {
     const type = (attrs.type || "").trim();
     const target = attrs.target === "assignment" ? "assignment" : "exam";
     const subjectName = (attrs.subject || "").trim();
@@ -121,5 +206,8 @@ function parseOneItem({ attrs, inner }, index) {
     } else {
         return { ...base, error: `نوع «${type}» برای تکلیف معتبر نیست` };
     }
+
+    const cleanedBlock = stripAnswerRevealingLists(fullMatch, result.submission_type);
+    result.blockHtml = sanitizeDecorativeHtml(cleanedBlock);
     return result;
 }
