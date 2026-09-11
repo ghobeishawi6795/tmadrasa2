@@ -954,16 +954,22 @@ async function createAttendanceSession(classId) {
 
 async function openAttendanceSession(sessionId) {
     const { session, records } = await api.get(`/api/teacher/attendance?session_id=${sessionId}`);
-    const STATUS_LABELS = { present: "حاضر", absent: "غایب", late: "تأخیر", excused: "موجه" };
+    const STATUS_LABELS = { present: "✅ حاضر", absent: "❌ غایب", late: "⏰ تأخیر", excused: "📝 موجه" };
 
     openModal(`حضور و غیاب — ${formatJalaliDate(session.session_date)}`, `
+        <div style="margin-bottom:14px">
+            <button type="button" class="secondary-btn" onclick="markAllAttendance('present')">✅ علامت زدن همه به‌عنوان حاضر</button>
+        </div>
         <form id="attendanceForm">
             ${records.map(r => `
-                <div class="form-group" style="display:flex;justify-content:space-between;align-items:center">
-                    <span>${escapeHtml(r.full_name)}</span>
-                    <select class="form-input" name="status_${r.student_id}" style="width:140px">
-                        ${Object.entries(STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${r.status === v ? "selected" : ""}>${l}</option>`).join("")}
-                    </select>
+                <div class="form-group" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+                    <span style="flex:1;min-width:110px">${escapeHtml(r.full_name)}</span>
+                    <input type="hidden" name="status_${r.student_id}" value="${r.status}">
+                    <div class="att-toggle-group" style="display:flex;gap:6px;flex-wrap:wrap">
+                        ${Object.entries(STATUS_LABELS).map(([v, l]) => `
+                            <button type="button" class="att-toggle-btn ${r.status === v ? "active" : ""}" data-value="${v}" onclick="setAttendanceStatus(${r.student_id}, '${v}', this)">${l}</button>
+                        `).join("")}
+                    </div>
                 </div>
             `).join("")}
             <div class="modal-footer">
@@ -979,6 +985,20 @@ async function openAttendanceSession(sessionId) {
         const recordsPayload = records.map(r => ({ student_id: r.student_id, status: fd.get(`status_${r.student_id}`) }));
         await withToast(() => api.post("/api/teacher/attendance", { action: "mark", session_id: sessionId, records: recordsPayload }), "حضور و غیاب ذخیره شد");
         closeModal();
+    });
+}
+
+function setAttendanceStatus(studentId, value, btn) {
+    const group = btn.closest(".att-toggle-group");
+    group.querySelectorAll(".att-toggle-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    group.parentElement.querySelector(`input[name="status_${studentId}"]`).value = value;
+}
+
+function markAllAttendance(value) {
+    document.querySelectorAll(".att-toggle-group").forEach(group => {
+        const btn = group.querySelector(`.att-toggle-btn[data-value="${value}"]`);
+        if (btn) btn.click();
     });
 }
 
