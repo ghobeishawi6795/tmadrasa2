@@ -40,31 +40,45 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     if (existing) throw errors.conflict("این نام کاربری قبلاً استفاده شده — یک نام کاربری دیگر انتخاب کنید");
 
     const passwordHash = await hashPassword(body.password);
+    let newUserId = null;
+    let parentId = null;
+    try {
+        const userResult = await db.run(
+            `INSERT INTO users (school_id, username, password_hash, full_name, phone)
+             VALUES (?, ?, ?, ?, ?)`,
+            user.school_id, body.username, passwordHash, body.full_name, body.phone || null
+        );
+        newUserId = userResult.meta.last_row_id;
 
-    const userResult = await db.run(
-        `INSERT INTO users (school_id, username, password_hash, full_name, phone)
-         VALUES (?, ?, ?, ?, ?)`,
-        user.school_id, body.username, passwordHash, body.full_name, body.phone || null
-    );
-    const newUserId = userResult.meta.last_row_id;
+        const parentResult = await db.run(
+            `INSERT INTO parents (user_id, school_id) VALUES (?, ?)`,
+            newUserId, user.school_id
+        );
+        parentId = parentResult.meta.last_row_id;
 
-    const parentResult = await db.run(
-        `INSERT INTO parents (user_id, school_id) VALUES (?, ?)`,
-        newUserId, user.school_id
-    );
-    const parentId = parentResult.meta.last_row_id;
-
-    const parentRole = await db.first(`SELECT id FROM roles WHERE key = 'parent'`);
-    await db.run(
-        `INSERT INTO user_roles (user_id, role_id, school_id) VALUES (?, ?, ?)`,
-        newUserId, parentRole.id, user.school_id
-    );
+        const parentRole = await db.first(`SELECT id FROM roles WHERE key = 'parent'`);
+        await db.run(
+            `INSERT INTO user_roles (user_id, role_id, school_id) VALUES (?, ?, ?)`,
+            newUserId, parentRole.id, user.school_id
+        );
+    } catch (e) {
+        // see admin/students.js for why this cleanup exists: these inserts
+        // depend on each other's generated ids so D1 can't run them as one
+        // atomic transaction, and an orphaned `users` row would otherwise
+        // keep the username permanently stuck as "taken".
+        if (parentId) await db.run(`DELETE FROM parents WHERE id = ?`, parentId).catch(() => {});
+        if (newUserId) {
+            await db.run(`DELETE FROM user_roles WHERE user_id = ?`, newUserId).catch(() => {});
+            await db.run(`DELETE FROM users WHERE id = ?`, newUserId).catch(() => {});
+        }
+        throw e;
+    }
 
     await writeAudit(env, {
         schoolId: user.school_id, actorUserId: user.id, action: "parent.create",
         entityType: "parent", entityId: parentId,
         meta: { username: body.username }, request,
-    });
+    }).catch(() => {});
 
     return created({ id: parentId, user_id: newUserId }, "والد ثبت شد");
 });

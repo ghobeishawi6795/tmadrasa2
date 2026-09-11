@@ -45,35 +45,56 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     if (existing) throw errors.conflict("این نام کاربری قبلاً استفاده شده — یک نام کاربری دیگر انتخاب کنید");
 
     const passwordHash = await hashPassword(body.password);
-    const userResult = await db.run(
-        `INSERT INTO users (school_id, username, password_hash, full_name, phone)
-         VALUES (?, ?, ?, ?, ?)`,
-        user.school_id, body.username, passwordHash, body.full_name, body.phone || null
-    );
-    const newUserId = userResult.meta.last_row_id;
+    let newUserId = null;
+    let studentId = null;
+    try {
+        const userResult = await db.run(
+            `INSERT INTO users (school_id, username, password_hash, full_name, phone)
+             VALUES (?, ?, ?, ?, ?)`,
+            user.school_id, body.username, passwordHash, body.full_name, body.phone || null
+        );
+        newUserId = userResult.meta.last_row_id;
 
-    const studentResult = await db.run(
-        `INSERT INTO students (user_id, school_id, student_code) VALUES (?, ?, ?)`,
-        newUserId, user.school_id, body.student_code || null
-    );
-    const studentId = studentResult.meta.last_row_id;
+        const studentResult = await db.run(
+            `INSERT INTO students (user_id, school_id, student_code) VALUES (?, ?, ?)`,
+            newUserId, user.school_id, body.student_code || null
+        );
+        studentId = studentResult.meta.last_row_id;
 
-    const studentRole = await db.first(`SELECT id FROM roles WHERE key = 'student'`);
-    await db.run(
-        `INSERT INTO user_roles (user_id, role_id, school_id) VALUES (?, ?, ?)`,
-        newUserId, studentRole.id, user.school_id
-    );
+        const studentRole = await db.first(`SELECT id FROM roles WHERE key = 'student'`);
+        await db.run(
+            `INSERT INTO user_roles (user_id, role_id, school_id) VALUES (?, ?, ?)`,
+            newUserId, studentRole.id, user.school_id
+        );
 
-    await db.run(
-        `INSERT INTO class_students (class_id, student_id, school_id) VALUES (?, ?, ?)`,
-        cls.id, studentId, user.school_id
-    );
+        await db.run(
+            `INSERT INTO class_students (class_id, student_id, school_id) VALUES (?, ?, ?)`,
+            cls.id, studentId, user.school_id
+        );
+    } catch (e) {
+        // These inserts depend on each other's generated ids, so D1 can't run
+        // them as one atomic transaction -- if anything after the `users`
+        // row failed, clean up everything we already created ourselves.
+        // Otherwise the username is stuck "taken" forever with no student to
+        // show for it (exactly what happened with a partial "ahmad2" row).
+        if (studentId) {
+            await db.run(`DELETE FROM class_students WHERE student_id = ?`, studentId).catch(() => {});
+            await db.run(`DELETE FROM students WHERE id = ?`, studentId).catch(() => {});
+        }
+        if (newUserId) {
+            await db.run(`DELETE FROM user_roles WHERE user_id = ?`, newUserId).catch(() => {});
+            await db.run(`DELETE FROM users WHERE id = ?`, newUserId).catch(() => {});
+        }
+        throw e;
+    }
 
+    // best-effort: a logging failure here must never make an already-successful
+    // registration look like it failed to the person who just submitted the form
     await writeAudit(env, {
         schoolId: user.school_id, actorUserId: user.id, action: "student.create",
         entityType: "student", entityId: studentId,
         meta: { username: body.username, class_id: cls.id }, request,
-    });
+    }).catch(() => {});
 
     return created({ id: studentId, user_id: newUserId }, "دانش‌آموز ثبت شد");
 });
