@@ -32,6 +32,13 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     requireFields(body, ["full_name", "username", "password"]);
 
     const db = q(env);
+
+    const existing = await db.first(
+        `SELECT id FROM users WHERE school_id = ? AND username = ?`,
+        user.school_id, body.username
+    );
+    if (existing) throw errors.conflict("این نام کاربری قبلاً استفاده شده — یک نام کاربری دیگر انتخاب کنید");
+
     const passwordHash = await hashPassword(body.password);
 
     const userResult = await db.run(

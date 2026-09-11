@@ -38,6 +38,12 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     );
     if (!cls) throw errors.notFound("کلاس پیدا نشد");
 
+    const existing = await db.first(
+        `SELECT id FROM users WHERE school_id = ? AND username = ?`,
+        user.school_id, body.username
+    );
+    if (existing) throw errors.conflict("این نام کاربری قبلاً استفاده شده — یک نام کاربری دیگر انتخاب کنید");
+
     const passwordHash = await hashPassword(body.password);
     const userResult = await db.run(
         `INSERT INTO users (school_id, username, password_hash, full_name, phone)
