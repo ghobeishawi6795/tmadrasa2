@@ -649,40 +649,233 @@ async function openExamQuestions(examId) {
 ========================================================= */
 
 async function renderQuestions() {
-    const questions = await api.get("/api/teacher/questions");
+    const filters = cache.questionFilters || (cache.questionFilters = {});
+    const scope = filters.scope || "mine";
+    const params = new URLSearchParams();
+    params.set("scope", scope);
+    if (filters.search) params.set("search", filters.search);
+    if (filters.type) params.set("type", filters.type);
+    if (filters.difficulty) params.set("difficulty", filters.difficulty);
+    if (filters.favorite) params.set("favorite", "1");
+
+    const questions = await api.get(`/api/teacher/questions?${params.toString()}`);
     cache.questions = questions;
 
     document.getElementById("content").innerHTML = `
         <div class="page-head">
             <div><div class="page-title">بانک سؤال</div><div class="page-subtitle">${questions.length} سؤال</div></div>
             <div style="display:flex;gap:8px">
+                <button class="secondary-btn" onclick="openTemplatePacksForm()">📦 قالب‌های آماده</button>
                 <button class="secondary-btn" onclick="openImportHtmlForm()">📥 وارد کردن از HTML</button>
                 <button class="primary-btn" onclick="openQuestionForm()">+ سؤال جدید</button>
             </div>
         </div>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+            <button class="${scope === "mine" ? "primary-btn" : "secondary-btn"}" onclick="cache.questionFilters.scope='mine'; renderQuestions()">بانک من</button>
+            <button class="${scope === "public" ? "primary-btn" : "secondary-btn"}" onclick="cache.questionFilters.scope='public'; renderQuestions()">🌐 بانک عمومی مدرسه</button>
+        </div>
+        <div class="module"><div class="module-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input class="form-input" id="qSearch" placeholder="جستجو در متن/فصل/مبحث/برچسب..." value="${escapeHtml(filters.search || "")}" style="flex:1;min-width:180px">
+            <select class="form-input" id="qFilterType" style="width:auto">
+                <option value="">همه‌ی انواع</option>
+                ${["multiple_choice","true_false","numeric","short_answer","long_answer"].map(t => `<option value="${t}" ${filters.type === t ? "selected" : ""}>${questionTypeLabel(t)}</option>`).join("")}
+            </select>
+            <select class="form-input" id="qFilterDifficulty" style="width:auto">
+                <option value="">همه‌ی سختی‌ها</option>
+                ${["easy","medium","hard"].map(d => `<option value="${d}" ${filters.difficulty === d ? "selected" : ""}>${difficultyLabel(d)}</option>`).join("")}
+            </select>
+            ${scope === "mine" ? `
+                <label style="display:flex;align-items:center;gap:4px;font-size:14px">
+                    <input type="checkbox" id="qFilterFavorite" ${filters.favorite ? "checked" : ""}> فقط علاقه‌مندی‌ها
+                </label>
+            ` : ""}
+            ${(filters.search || filters.type || filters.difficulty || filters.favorite) ? `<button class="secondary-btn" onclick="cache.questionFilters = {scope: '${scope}'}; renderQuestions()">پاک کردن فیلترها</button>` : ""}
+        </div></div>
         <div class="module"><div class="module-body table-wrap">
             <table>
-                <thead><tr><th>متن سؤال</th><th>نوع</th><th>تصحیح</th><th></th></tr></thead>
+                <thead><tr>${scope === "mine" ? "<th></th>" : ""}<th>متن سؤال</th><th>نوع</th>${scope === "mine" ? "<th>تصحیح</th>" : "<th>معلم</th>"}<th></th></tr></thead>
                 <tbody>
-                    ${questions.map(q => `
+                    ${questions.map(q => scope === "mine" ? `
                         <tr>
-                            <td>${escapeHtml(q.text)}</td>
+                            <td><button class="secondary-btn" style="padding:2px 8px" title="${q.is_favorite ? "حذف از علاقه‌مندی‌ها" : "افزودن به علاقه‌مندی‌ها"}" onclick="toggleQuestionFavorite(${q.id})">${q.is_favorite ? "⭐" : "☆"}</button></td>
+                            <td>${escapeHtml(q.text)}${questionMetaChips(q)}${visibilityBadge(q.visibility)}</td>
                             <td>${questionTypeLabel(q.type)}</td>
-                            <td><span class="status ${["multiple_choice","true_false","numeric"].includes(q.type) ? "green" : "orange"}">${["multiple_choice","true_false","numeric"].includes(q.type) ? "خودکار" : "دستی"}</span></td>
-                            <td>${q.used_in_exam
-                                ? `<span class="page-subtitle" title="چون به یک آزمون اضافه شده، دیگر قابل ویرایش نیست">قفل‌شده</span>`
-                                : `<button class="secondary-btn" onclick="openQuestionForm(cache.questions.find(x => x.id === ${q.id}))">ویرایش</button>`}
+                            <td><span class="status ${q.grading_mode === "auto" ? "green" : "orange"}">${q.grading_mode === "auto" ? "خودکار" : "دستی"}</span></td>
+                            <td>
+                                <div style="display:flex;gap:4px;flex-wrap:wrap">
+                                    <button class="secondary-btn" onclick="openQuestionForm(cache.questions.find(x => x.id === ${q.id}))">ویرایش</button>
+                                    <button class="secondary-btn" style="padding:6px 8px" title="آمار این سؤال" onclick="openQuestionAnalytics(${q.id})">📊</button>
+                                    <button class="secondary-btn" style="padding:6px 8px" title="مهارت‌های مرتبط" onclick="openQuestionSkills(${q.id})">🎯</button>
+                                    ${["numeric","multiple_choice","true_false"].includes(q.type) ? `<button class="secondary-btn" style="padding:6px 8px" title="ساخت یک نسخه‌ی مشابه با اعداد دیگر" onclick="generateQuestionVariant(${q.id})">🎲</button>` : ""}
+                                </div>
+                                ${q.used_in_exam ? `<div class="page-subtitle" style="font-size:11px;margin-top:4px" title="ویرایش این سؤال، آزمون‌هایی که قبلاً به آن‌ها اضافه شده را تغییر نمی‌دهد">نسخه ${q.version} · قبلاً استفاده شده</div>` : ""}
                             </td>
                         </tr>
-                    `).join("") || `<tr><td colspan="4" style="text-align:center;color:var(--muted)">سؤالی ثبت نشده</td></tr>`}
+                    ` : `
+                        <tr>
+                            <td>${escapeHtml(q.text)}${questionMetaChips(q)}</td>
+                            <td>${questionTypeLabel(q.type)}</td>
+                            <td class="page-subtitle">${escapeHtml(q.teacher_name || "—")}</td>
+                            <td><button class="secondary-btn" onclick="copyPublicQuestion(${q.id})">کپی به بانک من</button></td>
+                        </tr>
+                    `).join("") || `<tr><td colspan="5" style="text-align:center;color:var(--muted)">${scope === "public" ? "هنوز سؤال عمومی‌ای تأیید نشده" : "سؤالی پیدا نشد"}</td></tr>`}
                 </tbody>
             </table>
         </div></div>
     `;
+
+    let searchTimer;
+    document.getElementById("qSearch").addEventListener("input", (e) => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            cache.questionFilters.search = e.target.value || undefined;
+            renderQuestions();
+        }, 350);
+    });
+    document.getElementById("qFilterType").addEventListener("change", (e) => {
+        cache.questionFilters.type = e.target.value || undefined;
+        renderQuestions();
+    });
+    document.getElementById("qFilterDifficulty").addEventListener("change", (e) => {
+        cache.questionFilters.difficulty = e.target.value || undefined;
+        renderQuestions();
+    });
+    document.getElementById("qFilterFavorite").addEventListener("change", (e) => {
+        cache.questionFilters.favorite = e.target.checked || undefined;
+        renderQuestions();
+    });
+}
+
+async function toggleQuestionFavorite(id) {
+    await api.post("/api/teacher/toggle-question-favorite", { id });
+    cache.questions = null;
+    renderQuestions();
+}
+
+async function copyPublicQuestion(id) {
+    await withToast(() => api.post("/api/teacher/copy-public-question", { question_id: id }), "به بانک شما کپی شد");
+}
+
+async function openTemplatePacksForm() {
+    const packs = await api.get("/api/teacher/question-templates");
+    openModal("قالب‌های آماده", `
+        <div class="page-subtitle" style="margin-bottom:12px">یک بسته‌ی نمونه سؤال، آماده برای شروع، به بانک سؤال خودت اضافه کن. سؤال‌های بسته مستقیم به بانک تو کپی می‌شن و بعداً هم مثل هر سؤال دیگه‌ای قابل ویرایش‌ان.</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+            ${packs.map(p => `
+                <div class="module" style="padding:12px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+                    <div>
+                        <div style="font-weight:600">${escapeHtml(p.name)}</div>
+                        <div class="page-subtitle" style="font-size:13px">${escapeHtml(p.description)} · ${p.question_count} سؤال</div>
+                    </div>
+                    <button class="primary-btn" onclick="applyTemplatePack('${p.id}')">افزودن</button>
+                </div>
+            `).join("")}
+        </div>
+        <div class="modal-footer"><button class="secondary-btn" onclick="closeModal()">بستن</button></div>
+    `);
+}
+
+async function applyTemplatePack(packId) {
+    const result = await withToast(() => api.post("/api/teacher/question-templates", { pack_id: packId }));
+    toast(`${result.created_count} سؤال اضافه شد`);
+    cache.questions = null;
+    closeModal();
+    renderQuestions();
+}
+
+async function generateQuestionVariant(id) {
+    await withToast(() => api.post("/api/teacher/generate-question-variant", { question_id: id }), "نسخهٔ خودکار به‌عنوان سؤال جدید ساخته شد");
+    cache.questions = null;
+    renderQuestions();
+}
+
+async function openQuestionAnalytics(id) {
+    const a = await api.get(`/api/teacher/question-analytics?question_id=${id}`);
+    openModal("آمار سؤال", `
+        <div class="page-subtitle" style="margin-bottom:10px">${escapeHtml(a.text)}</div>
+        <div class="stats" style="grid-template-columns:repeat(3,1fr)">
+            <div class="stat-card"><div class="stat-value">${a.usage_count}</div><div class="stat-label">تعداد آزمون</div></div>
+            <div class="stat-card"><div class="stat-value">${a.answer_count}</div><div class="stat-label">تعداد پاسخ</div></div>
+            <div class="stat-card"><div class="stat-value">${a.success_rate ?? "—"}%</div><div class="stat-label">درصد موفقیت</div></div>
+        </div>
+        ${a.by_class.length ? `
+            <div style="margin-top:14px;font-weight:600">به‌تفکیک کلاس</div>
+            <table style="width:100%;margin-top:6px"><tbody>
+                ${a.by_class.map(c => `<tr><td>${escapeHtml(c.class_name)}</td><td>${c.pct}%</td><td class="page-subtitle">${c.correct}/${c.total}</td></tr>`).join("")}
+            </tbody></table>
+        ` : ""}
+        ${a.trend.length ? `
+            <div style="margin-top:14px;font-weight:600">روند هفتگی</div>
+            <table style="width:100%;margin-top:6px"><tbody>
+                ${a.trend.map(t => `<tr><td>${t.week}</td><td>${t.pct}%</td><td class="page-subtitle">${t.total} پاسخ</td></tr>`).join("")}
+            </tbody></table>
+        ` : ""}
+        ${!a.answer_count ? `<div class="page-subtitle" style="margin-top:10px">هنوز هیچ دانش‌آموزی به این سؤال پاسخ نداده.</div>` : ""}
+        <div class="modal-footer"><button class="secondary-btn" onclick="closeModal()">بستن</button></div>
+    `);
+}
+
+async function openQuestionSkills(id) {
+    const [linked, allSkills] = await Promise.all([
+        api.get(`/api/teacher/question-skills?question_id=${id}`),
+        api.get("/api/teacher/skills"),
+    ]);
+    const linkedIds = new Set(linked.map(s => s.id));
+    openModal("مهارت‌های مرتبط با این سؤال", `
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+            ${allSkills.length ? allSkills.map(s => `
+                <label style="display:flex;align-items:center;gap:8px">
+                    <input type="checkbox" ${linkedIds.has(s.id) ? "checked" : ""} onchange="toggleQuestionSkill(${id}, ${s.id}, this.checked)">
+                    ${escapeHtml(s.name)}
+                </label>
+            `).join("") : `<div class="page-subtitle">هنوز مهارتی نساختی.</div>`}
+        </div>
+        <form onsubmit="return addSkillInline(event, ${id})" style="display:flex;gap:8px">
+            <input class="form-input" name="name" placeholder="مهارت جدید (مثال: جمع دورقمی)" required>
+            <button type="submit" class="secondary-btn">افزودن</button>
+        </form>
+        <div class="modal-footer"><button class="secondary-btn" onclick="closeModal()">بستن</button></div>
+    `);
+}
+
+async function toggleQuestionSkill(questionId, skillId, checked) {
+    if (checked) await api.post("/api/teacher/question-skills", { question_id: questionId, skill_id: skillId });
+    else await api.del("/api/teacher/question-skills", { question_id: questionId, skill_id: skillId });
+}
+
+async function addSkillInline(e, questionId) {
+    e.preventDefault();
+    const name = new FormData(e.target).get("name");
+    const skill = await withToast(() => api.post("/api/teacher/skills", { name }));
+    await api.post("/api/teacher/question-skills", { question_id: questionId, skill_id: skill.id });
+    openQuestionSkills(questionId);
+    return false;
 }
 
 function questionTypeLabel(t) {
-    return { multiple_choice: "چندگزینه‌ای", true_false: "درست/غلط", numeric: "عددی", short_answer: "پاسخ کوتاه", long_answer: "تشریحی" }[t] || t;
+    return { multiple_choice: "چندگزینه‌ای", true_false: "درست/غلط", numeric: "عددی", short_answer: "پاسخ کوتاه", long_answer: "تشریحی", fill_blank: "جای‌خالی", custom_html: "HTML تعاملی" }[t] || t;
+}
+
+function difficultyLabel(d) {
+    return { easy: "آسان", medium: "متوسط", hard: "دشوار" }[d] || d;
+}
+
+function visibilityBadge(v) {
+    if (v === "public") return ` <span class="status green" style="font-size:11px">🌐 عمومی</span>`;
+    if (v === "pending") return ` <span class="status orange" style="font-size:11px">در انتظار تأیید مدیر</span>`;
+    return "";
+}
+
+// Small secondary line under the question text in the bank table --
+// chapter/topic/difficulty/tags, only the ones actually set.
+function questionMetaChips(q) {
+    const parts = [];
+    if (q.chapter) parts.push(escapeHtml(q.chapter));
+    if (q.topic) parts.push(escapeHtml(q.topic));
+    if (q.difficulty) parts.push(difficultyLabel(q.difficulty));
+    if (q.tags) parts.push(q.tags.split(",").map(t => `#${escapeHtml(t)}`).join(" "));
+    if (!parts.length) return "";
+    return `<div class="page-subtitle" style="margin-top:4px;font-size:12px">${parts.join(" · ")}</div>`;
 }
 
 /* =========================================================
@@ -778,11 +971,35 @@ function openQuestionForm(existing) {
                     <option value="numeric">عددی (تصحیح خودکار)</option>
                     <option value="short_answer">پاسخ کوتاه (نیازمند بررسی دستی)</option>
                     <option value="long_answer">تشریحی (تصحیح دستی)</option>
+                    <option value="fill_blank">جای‌خالی (خودکار یا دستی — خودت تعیین می‌کنی)</option>
+                    <option value="custom_html">HTML تعاملی دلخواه (تصحیح همیشه دستی)</option>
                 </select>
                 ${isEdit ? `<div class="page-subtitle">نوع سؤال بعد از ساخت قابل تغییر نیست.</div>` : ""}
             </div>
-            <div class="form-group"><label>متن سؤال</label><textarea class="form-input" name="text" rows="2" style="height:auto;padding:10px 12px" required>${isEdit ? escapeHtml(existing.text) : ""}</textarea></div>
+            <div class="form-group"><label id="qTextLabel">متن سؤال</label><textarea class="form-input" name="text" id="qText" rows="2" style="height:auto;padding:10px 12px" required>${isEdit ? escapeHtml(existing.text) : ""}</textarea></div>
+            <div id="qSimilarWarning"></div>
             <div class="form-group"><label>شناسه درس (اختیاری)</label><input class="form-input" name="subject_id" type="number" value="${isEdit && existing.subject_id ? existing.subject_id : ""}"></div>
+            <div style="display:flex;gap:10px">
+                <div class="form-group" style="flex:1"><label>فصل (اختیاری)</label><input class="form-input" name="chapter" value="${isEdit ? escapeHtml(existing.chapter || "") : ""}"></div>
+                <div class="form-group" style="flex:1"><label>مبحث (اختیاری)</label><input class="form-input" name="topic" value="${isEdit ? escapeHtml(existing.topic || "") : ""}"></div>
+            </div>
+            <div class="form-group"><label>سطح سختی (اختیاری)</label>
+                <select class="form-input" name="difficulty">
+                    <option value="">— مشخص نشده —</option>
+                    <option value="easy" ${isEdit && existing.difficulty === "easy" ? "selected" : ""}>آسان</option>
+                    <option value="medium" ${isEdit && existing.difficulty === "medium" ? "selected" : ""}>متوسط</option>
+                    <option value="hard" ${isEdit && existing.difficulty === "hard" ? "selected" : ""}>دشوار</option>
+                </select>
+            </div>
+            <div class="form-group"><label>برچسب‌ها (اختیاری، با کاما جدا کن)</label><input class="form-input" name="tags" placeholder="مثال: جمع, اعداد دورقمی" value="${isEdit ? escapeHtml(existing.tags || "") : ""}"></div>
+            <div class="form-group"><label>توضیح پاسخ (اختیاری — بعد از پاسخ‌دهی به دانش‌آموز نشان داده می‌شود)</label><textarea class="form-input" name="explanation" rows="2" style="height:auto;padding:10px 12px">${isEdit ? escapeHtml(existing.explanation || "") : ""}</textarea></div>
+            <div class="form-group">
+                <label style="display:flex;align-items:center;gap:6px;font-weight:normal">
+                    <input type="checkbox" name="visibility_public" ${isEdit && (existing.visibility === "public" || existing.visibility === "pending") ? "checked" : ""}>
+                    با بقیه‌ی معلم‌های مدرسه به اشتراک بذار (نیاز به تأیید مدیر داره)
+                </label>
+                ${isEdit ? visibilityBadge(existing.visibility) : ""}
+            </div>
             <div id="typeFields"></div>
             <div class="modal-footer">
                 <button type="submit" class="primary-btn">${isEdit ? "ذخیره تغییرات" : "ثبت سؤال"}</button>
@@ -793,15 +1010,39 @@ function openQuestionForm(existing) {
     if (isEdit) document.getElementById("qType").value = existing.type;
     onQuestionTypeChange(existing);
 
+    let similarTimer;
+    document.getElementById("qText").addEventListener("input", (e) => {
+        clearTimeout(similarTimer);
+        const text = e.target.value;
+        similarTimer = setTimeout(async () => {
+            const box = document.getElementById("qSimilarWarning");
+            if (!text.trim() || text.trim().length < 5) { box.innerHTML = ""; return; }
+            const matches = await api.post("/api/teacher/find-similar-questions", { text, exclude_id: isEdit ? existing.id : undefined });
+            box.innerHTML = matches.length ? `
+                <div class="page-subtitle" style="background:var(--surface2);border-radius:8px;padding:8px 10px;margin:-8px 0 12px">
+                    شبیه به سؤال‌های موجود تو بانکت: ${matches.map(m => `«${escapeHtml(m.text.slice(0, 40))}${m.text.length > 40 ? "…" : ""}» (${m.similarity_pct}٪)`).join("، ")}
+                </div>
+            ` : "";
+        }, 500);
+    });
+
     document.getElementById("questionForm").addEventListener("submit", async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
         const type = isEdit ? existing.type : fd.get("type");
-        const body = { type, text: fd.get("text"), subject_id: fd.get("subject_id") || null };
+        const body = {
+            type, text: fd.get("text"), subject_id: fd.get("subject_id") || null,
+            chapter: fd.get("chapter") || null, topic: fd.get("topic") || null,
+            difficulty: fd.get("difficulty") || null, tags: fd.get("tags") || null,
+            explanation: fd.get("explanation") || null,
+            visibility: fd.get("visibility_public") ? "public" : "private",
+        };
 
         if (type === "true_false") body.correct_boolean = fd.get("correct_boolean") === "true";
         if (type === "numeric") { body.correct_numeric = Number(fd.get("correct_numeric")); body.numeric_tolerance = Number(fd.get("numeric_tolerance") || 0); }
         if (type === "short_answer" || type === "long_answer") body.correct_text = fd.get("correct_text") || null;
+        if (type === "fill_blank") { body.correct_text = fd.get("correct_text") || null; body.grading_mode = fd.get("grading_mode"); }
+        if (type === "custom_html") body.custom_html = fd.get("custom_html") || null;
         if (type === "multiple_choice") {
             const texts = fd.getAll("opt_text");
             const correctIdx = Number(fd.get("correct_idx"));
@@ -822,6 +1063,7 @@ function openQuestionForm(existing) {
 function onQuestionTypeChange(existing) {
     const type = document.getElementById("qType").value;
     const box = document.getElementById("typeFields");
+    document.getElementById("qTextLabel").textContent = type === "custom_html" ? "عنوان کوتاه (فقط برای نمایش در لیست بانک سؤال)" : "متن سؤال";
     if (type === "multiple_choice") {
         const opts = existing?.options || [];
         box.innerHTML = [0, 1, 2, 3].map(i => {
@@ -842,9 +1084,40 @@ function onQuestionTypeChange(existing) {
             <div class="form-group"><label>پاسخ صحیح</label><input class="form-input" name="correct_numeric" type="number" step="any" value="${existing ? existing.correct_numeric ?? "" : ""}" required></div>
             <div class="form-group"><label>بازه‌ی مجاز خطا (اختیاری)</label><input class="form-input" name="numeric_tolerance" type="number" step="any" value="${existing ? existing.numeric_tolerance ?? 0 : 0}"></div>
         `;
+    } else if (type === "fill_blank") {
+        const gm = existing ? (existing.grading_mode || "auto") : "auto";
+        box.innerHTML = `
+            <div class="form-group"><label>پاسخ‌های قابل‌قبول (اگه چند جواب درسته، با کاما جدا کن)</label>
+                <input class="form-input" name="correct_text" placeholder="مثال: تهران, تهرون" value="${existing ? escapeHtml(existing.correct_text || "") : ""}" ${gm === "auto" ? "required" : ""}></div>
+            <div class="form-group"><label>نحوه‌ی تصحیح</label>
+                <select class="form-input" name="grading_mode" onchange="onFillBlankModeChange(this)">
+                    <option value="auto" ${gm === "auto" ? "selected" : ""}>خودکار (مقایسه با پاسخ‌های بالا)</option>
+                    <option value="manual" ${gm === "manual" ? "selected" : ""}>دستی (خودم بعداً نمره می‌دم)</option>
+                </select>
+            </div>
+            <div class="page-subtitle">تصحیح خودکار فقط تطبیق دقیق متن رو چک می‌کنه (بدون فهم معنا) — برای جواب‌های کوتاه و مشخص مثل اسم/عدد/تاریخ مناسبه، نه سؤال‌های چندجوابیِ باز.</div>
+        `;
+    } else if (type === "custom_html") {
+        box.innerHTML = `
+            <div class="form-group"><label>محتوای HTML (کد کامل، معمولاً از هوش مصنوعی گرفته می‌شه)</label>
+                <textarea class="form-input" name="custom_html" rows="8" style="height:auto;padding:10px 12px;font-family:monospace;font-size:12px" required placeholder="<html>...</html>">${existing ? escapeHtml(existing.custom_html || "") : ""}</textarea>
+            </div>
+            <div class="page-subtitle" style="background:var(--surface2);border-radius:8px;padding:10px 12px">
+                ⚠️ این نوع سؤال کد HTML/جاوااسکریپت دلخواه رو واقعاً اجرا می‌کنه (داخل یک محیط ایزوله که به بقیه‌ی سایت دسترسی نداره). چون این کد سمت مرورگر دانش‌آموز اجرا می‌شه، تصحیحش <b>همیشه دستی</b>ه — نمی‌شه به نمره‌ای که خودِ کد گزارش می‌ده به‌طور کامل اعتماد کرد.<br>
+                برای این‌که نتیجه به سیستم برسه، فایل باید در پایان کارش این خط رو اجرا کنه:<br>
+                <code style="font-size:11px">window.parent.postMessage({type:'homeworkAnswer', value: نمره_یا_نتیجه}, '*')</code>
+            </div>
+        `;
     } else {
         box.innerHTML = `<div class="form-group"><label>متن مرجع برای تصحیح دستی (اختیاری)</label><textarea class="form-input" name="correct_text" rows="2" style="height:auto;padding:10px 12px">${existing ? escapeHtml(existing.correct_text || "") : ""}</textarea></div>`;
     }
+}
+
+// fill_blank's "پاسخ‌های قابل‌قبول" field is only truly required when
+// grading_mode is auto (manual grading doesn't need an exact key).
+function onFillBlankModeChange(select) {
+    const input = select.closest("#typeFields").querySelector('[name="correct_text"]');
+    input.required = select.value === "auto";
 }
 
 /* =========================================================
@@ -954,22 +1227,16 @@ async function createAttendanceSession(classId) {
 
 async function openAttendanceSession(sessionId) {
     const { session, records } = await api.get(`/api/teacher/attendance?session_id=${sessionId}`);
-    const STATUS_LABELS = { present: "✅ حاضر", absent: "❌ غایب", late: "⏰ تأخیر", excused: "📝 موجه" };
+    const STATUS_LABELS = { present: "حاضر", absent: "غایب", late: "تأخیر", excused: "موجه" };
 
     openModal(`حضور و غیاب — ${formatJalaliDate(session.session_date)}`, `
-        <div style="margin-bottom:14px">
-            <button type="button" class="secondary-btn" onclick="markAllAttendance('present')">✅ علامت زدن همه به‌عنوان حاضر</button>
-        </div>
         <form id="attendanceForm">
             ${records.map(r => `
-                <div class="form-group" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-                    <span style="flex:1;min-width:110px">${escapeHtml(r.full_name)}</span>
-                    <input type="hidden" name="status_${r.student_id}" value="${r.status}">
-                    <div class="att-toggle-group" style="display:flex;gap:6px;flex-wrap:wrap">
-                        ${Object.entries(STATUS_LABELS).map(([v, l]) => `
-                            <button type="button" class="att-toggle-btn ${r.status === v ? "active" : ""}" data-value="${v}" onclick="setAttendanceStatus(${r.student_id}, '${v}', this)">${l}</button>
-                        `).join("")}
-                    </div>
+                <div class="form-group" style="display:flex;justify-content:space-between;align-items:center">
+                    <span>${escapeHtml(r.full_name)}</span>
+                    <select class="form-input" name="status_${r.student_id}" style="width:140px">
+                        ${Object.entries(STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${r.status === v ? "selected" : ""}>${l}</option>`).join("")}
+                    </select>
                 </div>
             `).join("")}
             <div class="modal-footer">
@@ -985,20 +1252,6 @@ async function openAttendanceSession(sessionId) {
         const recordsPayload = records.map(r => ({ student_id: r.student_id, status: fd.get(`status_${r.student_id}`) }));
         await withToast(() => api.post("/api/teacher/attendance", { action: "mark", session_id: sessionId, records: recordsPayload }), "حضور و غیاب ذخیره شد");
         closeModal();
-    });
-}
-
-function setAttendanceStatus(studentId, value, btn) {
-    const group = btn.closest(".att-toggle-group");
-    group.querySelectorAll(".att-toggle-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    group.parentElement.querySelector(`input[name="status_${studentId}"]`).value = value;
-}
-
-function markAllAttendance(value) {
-    document.querySelectorAll(".att-toggle-group").forEach(group => {
-        const btn = group.querySelector(`.att-toggle-btn[data-value="${value}"]`);
-        if (btn) btn.click();
     });
 }
 
@@ -1161,7 +1414,7 @@ const HELP_SECTIONS = [
     { icon: "🏫", title: "کلاس‌های من", body: "فهرست کلاس/درس‌هایی که مدیر مدرسه شما را برای تدریس آن‌ها تخصیص داده است." },
     { icon: "📚", title: "تکالیف", body: "ساخت تکلیف با ۶ نوع پاسخ ممکن برای دانش‌آموز: متنی، عکس، صوتی، نقاشی (تصحیح دستی)، یا تطبیق / دسته‌بندی (تصحیح کاملاً خودکار). مشاهده و نمره‌دهی به پاسخ‌های ارسالی از همین بخش." },
     { icon: "📝", title: "آزمون‌ها", body: "ساخت آزمون (پیش‌نویس)، افزودن سؤال از بانک سؤال، تعیین زمان شروع/پایان و مدت، سپس انتشار برای دانش‌آموزان. بعد از انتشار فقط می‌توان آزمون را بست، نه ویرایش کرد." },
-    { icon: "🗂️", title: "بانک سؤال", body: "ساخت سؤال با ۵ نوع (چندگزینه‌ای، درست/غلط، عددی، پاسخ کوتاه، تشریحی). سؤال قابل ویرایش است تا وقتی به هیچ آزمونی اضافه نشده — بعد از آن برای حفظ اعتبار نمرات قفل می‌شود. دکمه‌ی «وارد کردن از HTML» امکان افزودن دسته‌جمعی سؤال/تکلیف از یک فایل HTML با قالب مشخص (تولیدشده با کمک هوش مصنوعی) را می‌دهد." },
+    { icon: "🗂️", title: "بانک سؤال", body: "ساخت سؤال با ۷ نوع (چندگزینه‌ای، درست/غلط، عددی، جای‌خالی، پاسخ کوتاه، تشریحی، HTML تعاملی دلخواه). «جای‌خالی» یک متن کوتاه با جواب دقیق‌ه — خودت تعیین می‌کنی خودکار تصحیح بشه یا دستی. «HTML تعاملی دلخواه» یعنی یک بازی/شبیه‌سازی/تمرین کامل که خودت (یا هوش مصنوعی) می‌سازی — همیشه نیازمند تصحیح دستی‌ه؛ راهنمای کاملش تو docs/راهنمای-سوال-html-تعاملی.md هست. می‌تونی برای هر سؤال فصل/مبحث/سطح سختی/برچسب مشخص کنی، سؤال‌های مهم رو ستاره بزنی، و جستجو/فیلتر کنی. موقع نوشتن سؤال جدید، اگه چیز شبیهی تو بانکت باشه بهت هشدار می‌ده. دکمه‌ی 📊 آمار موفقیت سؤال رو نشون می‌ده، 🎯 امکان وصل‌کردن سؤال به «مهارت»های خودت رو می‌ده، و 🎲 (فقط برای سؤال‌های محاسباتی چندگزینه‌ای/عددی/درست‌غلط) یک نسخه‌ی مشابه با اعداد دیگه می‌سازه. دکمه‌ی «قالب‌های آماده» چند بسته سؤال نمونه رو مستقیم به بانک تو کپی می‌کنه. تب «🌐 بانک عمومی مدرسه» سؤال‌هایی رو نشون می‌ده که بقیه‌ی معلم‌ها به اشتراک گذاشتن و مدیر تأیید کرده — می‌تونی هرکدوم رو به بانک خودت کپی کنی. برای اشتراک‌گذاشتن سؤال خودت، تو فرم سؤال یک تیک بزن؛ تا مدیر تأییدش نکنه عمومی نمی‌شه. ویرایش سؤال همیشه ممکنه، حتی اگه قبلاً به یک آزمون اضافه شده باشه — هر آزمون نسخه‌ای از سؤال رو که موقع اضافه‌کردن وجود داشته نگه می‌داره. دکمه‌ی «وارد کردن از HTML» امکان افزودن دسته‌جمعی سؤال/تکلیف از یک فایل HTML با قالب مشخص را می‌دهد (این یکی تزئینی‌ست، اسکریپت اجرا نمی‌کنه — با نوع «HTML تعاملی دلخواه» بالا اشتباه نگیر)." },
     { icon: "✅", title: "تصحیح دستی", body: "پاسخ‌های آزمون که نیاز به بررسی دستی دارند (سؤالات پاسخ کوتاه/تشریحی) اینجا نمره‌گذاری می‌شوند." },
     { icon: "📋", title: "حضور و غیاب", body: "برای هر کلاس، جلسه‌ی حضور و غیاب امروز را بساز و وضعیت هر دانش‌آموز (حاضر/غایب/تأخیر/موجه) را ثبت کن." },
     { icon: "🎯", title: "نمرات", body: "ثبت دستی نمره برای هر دانش‌آموز در یک کلاس/درس (مثلاً نمره‌ی نهایی یا مستمر) — جدا از نمره‌ی خودکار تکلیف/آزمون." },

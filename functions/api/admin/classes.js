@@ -10,7 +10,12 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     await requirePermission(env, user, "classes.view");
     const db = q(env);
     const rows = await db.all(
-        `SELECT * FROM classes WHERE school_id = ? AND deleted_at IS NULL ORDER BY name`,
+        `SELECT c.*,
+                (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id = c.id) AS student_count,
+                (SELECT COUNT(*) FROM class_teachers ct WHERE ct.class_id = c.id) AS teacher_count
+           FROM classes c
+          WHERE c.school_id = ? AND c.deleted_at IS NULL
+          ORDER BY c.name`,
         user.school_id
     );
     return ok(rows.results);

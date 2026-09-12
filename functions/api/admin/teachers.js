@@ -27,7 +27,6 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     requireFields(body, ["full_name", "username", "password"]);
 
     const db = q(env);
-
     const existing = await db.first(
         `SELECT id FROM users WHERE school_id = ? AND username = ?`,
         user.school_id, body.username

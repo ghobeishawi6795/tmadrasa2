@@ -7,6 +7,7 @@ import { authenticate, requirePermission } from "../_shared/auth.js";
 import { getTeacherRecord, loadExamOwnedByTeacher, loadQuestionOwnedByTeacher } from "../_shared/ownership.js";
 import { ok, errors } from "../_shared/response.js";
 import { requireFields, readJson, withErrorHandling } from "../_shared/validate.js";
+import { ensureVersionSnapshot } from "../_shared/question-versions.js";
 
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
@@ -20,10 +21,15 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     if (exam.status !== "draft") throw errors.forbidden("فقط آزمون پیش‌نویس قابل ویرایش سؤال است");
     await loadQuestionOwnedByTeacher(env, body.question_id, teacher.id, user.school_id);
 
+    // pin the question's current version -- later edits to this question
+    // won't affect this exam. ensureVersionSnapshot covers the case where
+    // this question predates versioning or was never edited since.
+    const pinnedVersion = await ensureVersionSnapshot(env, body.question_id);
+
     const db = q(env);
     await db.run(
-        `INSERT INTO exam_questions (exam_id, question_id, position, score) VALUES (?, ?, ?, ?)`,
-        exam.id, body.question_id, body.position ?? 0, body.score ?? 1
+        `INSERT INTO exam_questions (exam_id, question_id, position, score, pinned_version) VALUES (?, ?, ?, ?, ?)`,
+        exam.id, body.question_id, body.position ?? 0, body.score ?? 1, pinnedVersion
     );
     return ok(null, "سؤال به آزمون اضافه شد");
 });

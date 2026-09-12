@@ -14,12 +14,16 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const classId = url.searchParams.get("class_id");
 
     const rows = await db.all(
-        `SELECT s.id, u.id as user_id, s.student_code, u.full_name, u.username, u.is_active
-           FROM students s JOIN users u ON u.id = s.user_id
-           ${classId ? "JOIN class_students cs ON cs.student_id = s.id AND cs.class_id = ?" : ""}
+        `SELECT s.id, u.id as user_id, s.student_code, u.full_name, u.username, u.is_active,
+                c.id as class_id, c.name as class_name, c.grade as class_grade
+           FROM students s
+           JOIN users u ON u.id = s.user_id
+           LEFT JOIN class_students cs ON cs.student_id = s.id
+           LEFT JOIN classes c ON c.id = cs.class_id AND c.deleted_at IS NULL
           WHERE s.school_id = ? AND s.deleted_at IS NULL
+          ${classId ? "AND cs.class_id = ?" : ""}
           ORDER BY u.full_name`,
-        ...(classId ? [classId, user.school_id] : [user.school_id])
+        ...(classId ? [user.school_id, classId] : [user.school_id])
     );
     return ok(rows.results);
 });

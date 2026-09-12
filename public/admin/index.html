@@ -88,11 +88,24 @@ const NAV_ITEMS = [
     { key: "announcements", icon: "📢", label: "اطلاعیه‌ها" },
     { key: "messages",      icon: "💬", label: "پیام‌ها" },
     { key: "reports",       icon: "📊", label: "گزارش‌ها" },
+    { key: "question-review", icon: "📝", label: "تأیید سؤالات عمومی" },
     { key: "settings",      icon: "⚙️", label: "تنظیمات" },
     { key: "help",          icon: "❓", label: "راهنما" },
 ];
 
 let cache = { students: null, classes: null, announcements: null, conversations: null, teachers: null, subjects: null, parents: null };
+
+async function loadClasses() {
+    const classes = (await api.get("/api/admin/classes")) || [];
+    cache.classes = classes;
+    return classes;
+}
+
+async function loadStudents() {
+    const students = (await api.get("/api/admin/students")) || [];
+    cache.students = students;
+    return students;
+}
 
 function navigate(key) {
     setActiveNav(key);
@@ -113,6 +126,7 @@ async function render(key) {
         else if (key === "parents") await renderParents();
         else if (key === "schedule") await renderSchedule();
         else if (key === "reports") await renderReports();
+        else if (key === "question-review") await renderQuestionReview();
         else if (key === "settings") await renderSettings();
         else if (key === "help") renderHelp();
     } catch (e) {
@@ -128,7 +142,7 @@ async function renderDashboard() {
     let [students, classes, announcements] = await Promise.all([
         api.get("/api/admin/students").catch(() => []),
         api.get("/api/admin/classes").catch(() => []),
-        api.get("/api/announcements").catch(() => []),
+        api.get("/api/announcements/announcements").catch(() => []),
     ]);
     // A resolved (non-throwing) call can still come back with data:null --
     // .catch() above only guards against rejections, not that case.
@@ -844,7 +858,7 @@ async function downloadBackup() {
 ========================================================= */
 
 async function renderAnnouncements() {
-    const announcements = (await api.get("/api/announcements")) || [];
+    const announcements = (await api.get("/api/announcements/announcements")) || [];
     cache.announcements = announcements;
 
     document.getElementById("content").innerHTML = `
@@ -897,7 +911,7 @@ function openAnnouncementForm() {
         e.preventDefault();
         const fd = new FormData(e.target);
         const body = Object.fromEntries(fd.entries());
-        await withToast(() => api.post("/api/announcements", body), "اطلاعیه منتشر شد");
+        await withToast(() => api.post("/api/announcements/announcements", body), "اطلاعیه منتشر شد");
         closeModal();
         renderAnnouncements();
     });
@@ -1016,6 +1030,37 @@ async function openConversation(id, title) {
 /* =========================================================
    REPORTS — گزارش تجمیعی مدیر (فاز ۲)
 ========================================================= */
+
+const ADMIN_QUESTION_TYPE_LABELS = { multiple_choice: "چندگزینه‌ای", true_false: "درست/غلط", numeric: "عددی", short_answer: "پاسخ کوتاه", long_answer: "تشریحی", fill_blank: "جای‌خالی", custom_html: "HTML تعاملی" };
+
+async function renderQuestionReview() {
+    const pending = await api.get("/api/admin/pending-questions");
+
+    document.getElementById("content").innerHTML = `
+        <div class="page-head">
+            <div><div class="page-title">تأیید سؤالات عمومی</div><div class="page-subtitle">${pending.length} سؤال در انتظار تأیید</div></div>
+        </div>
+        <div class="page-subtitle" style="margin-bottom:14px">وقتی یک معلم می‌خواد سؤالی رو با بقیه‌ی معلم‌های مدرسه به اشتراک بذاره، اول اینجا برای تأیید تو میاد — بعد از تأیید، بقیه‌ی معلم‌ها می‌تونن تو «بانک عمومی مدرسه» ببیننش و به بانک خودشون کپی کنن.</div>
+        ${pending.length ? pending.map(p => `
+            <div class="card" style="margin-bottom:10px">
+                <div class="card-head">
+                    <div class="card-title">${escapeHtml(p.text)}</div>
+                    <span class="status">${ADMIN_QUESTION_TYPE_LABELS[p.type] || p.type}</span>
+                </div>
+                <div class="page-subtitle">معلم: ${escapeHtml(p.teacher_name)}${p.chapter ? ` · فصل: ${escapeHtml(p.chapter)}` : ""}${p.difficulty ? ` · سختی: ${escapeHtml(p.difficulty)}` : ""}</div>
+                <div style="display:flex;gap:8px;margin-top:10px">
+                    <button class="primary-btn" onclick="moderateQuestion(${p.id}, 'approve')">✅ تأیید</button>
+                    <button class="secondary-btn" onclick="moderateQuestion(${p.id}, 'reject')">رد</button>
+                </div>
+            </div>
+        `).join("") : `<div class="card"><div class="page-subtitle">سؤالی در انتظار تأیید نیست.</div></div>`}
+    `;
+}
+
+async function moderateQuestion(id, action) {
+    await withToast(() => api.post("/api/admin/moderate-question", { question_id: id, action }));
+    renderQuestionReview();
+}
 
 async function renderReports() {
     const r = await api.get("/api/admin/reports");
@@ -1249,6 +1294,7 @@ const HELP_SECTIONS = [
     { icon: "📢", title: "اطلاعیه‌ها", body: "انتشار اطلاعیه برای همه یا یک گروه خاص (معلمان/دانش‌آموزان/والدین) — در داشبورد همان گروه نمایش داده می‌شود." },
     { icon: "💬", title: "پیام‌ها", body: "شروع گفتگوی مستقیم با هر معلم، دانش‌آموز یا والد و پاسخ‌گویی به گفتگوهای موجود." },
     { icon: "📊", title: "گزارش‌ها", body: "گزارش تجمیعی مدرسه: نرخ حضور و غیاب ۳۰ روز اخیر، میانگین نمرات هر کلاس و فهرست تکالیف دارای مهلت گذشته." },
+    { icon: "📝", title: "تأیید سؤالات عمومی", body: "وقتی یک معلم می‌خواد سؤالی از بانک سؤال خودش رو با بقیه‌ی معلم‌های مدرسه به اشتراک بذاره، اول اینجا برای تأیید تو میاد. تأیید یعنی سؤال به «بانک عمومی مدرسه» اضافه می‌شه و بقیه‌ی معلم‌ها می‌تونن به بانک خودشون کپی کنن؛ رد یعنی سؤال خصوصی می‌مونه." },
     { icon: "⚙️", title: "تنظیمات", body: "برندینگ مدرسه (نام، رنگ اصلی، لوگو که در هدر همه‌ی نقش‌ها نمایش داده می‌شود)، تقویم تعطیلات، و دانلود خروجی پشتیبان کامل (JSON) از تمام داده‌های مدرسه." },
     { icon: "🚀", title: "شروع سریع (دکمه بالای صفحه)", body: "یک ویزارد ۴ قدمی برای راه‌اندازی سریع یک مدرسه‌ی تازه: ساخت اولین کلاس، اولین درس، اولین معلم (با تخصیص خودکار) و اولین دانش‌آموز." },
 ];

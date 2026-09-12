@@ -457,9 +457,9 @@ async function openMultiAssignmentDetail(assignmentId) {
     const overdue = new Date() > new Date(data.due_at);
     const canSubmit = canResubmit && !(overdue && !data.allow_late);
 
-    __mq = { assignment: data, matchState: {}, mediaRecorders: {}, drawn: {} };
+    __mq = { assignment: data, matchState: {}, mediaRecorders: {} };
 
-    let statusHtml = "";
+    let statusHtml = `<div class="page-subtitle" style="margin-bottom:14px">${escapeHtml(data.description || "")}</div>`;
     if (alreadySubmitted) {
         const labels = {
             submitted: ["orange", "ارسال‌شده — در انتظار تصحیح"],
@@ -478,14 +478,6 @@ async function openMultiAssignmentDetail(assignmentId) {
     const questionsHtml = data.questions.map((q, i) => renderMqQuestion(q, i, data.questions.length, canSubmit)).join("");
 
     openModal(data.title, `
-        <div class="quiz-header">
-            <div class="quiz-sub">${escapeHtml(data.subject_name || "")}${data.class_name ? ` — ${escapeHtml(data.class_name)}` : ""}</div>
-            <div class="quiz-title">${escapeHtml(data.description || data.title)}</div>
-            ${canSubmit ? `
-                <div class="quiz-progress-track"><div class="quiz-progress-fill" id="mqProgressFill"></div></div>
-                <div class="quiz-progress-label"><span id="mqProgressLabel">0</span> از ${data.questions.length} سؤال پاسخ داده شد</div>
-            ` : ""}
-        </div>
         ${statusHtml}
         <form id="mqForm">
             ${questionsHtml}
@@ -509,19 +501,13 @@ async function openMultiAssignmentDetail(assignmentId) {
                 const dataUrl = await fileToDataUrl(file);
                 document.getElementById(`mqPhotoPreview_${q.id}`).innerHTML = `<img src="${dataUrl}" style="max-width:200px;border-radius:8px;margin-top:8px">`;
                 document.getElementById(`mqPhoto_${q.id}`).dataset.answerData = dataUrl;
-                mqRecomputeProgress(data.questions);
             });
         }
     });
 
     if (!canSubmit) return;
 
-    const form = document.getElementById("mqForm");
-    form.addEventListener("input", () => mqRecomputeProgress(data.questions));
-    form.addEventListener("change", () => mqRecomputeProgress(data.questions));
-    form.addEventListener("click", () => setTimeout(() => mqRecomputeProgress(data.questions), 0));
-
-    form.addEventListener("submit", async (e) => {
+    document.getElementById("mqForm").addEventListener("submit", async (e) => {
         e.preventDefault();
         const answers = [];
         for (const q of data.questions) {
@@ -562,27 +548,6 @@ async function openMultiAssignmentDetail(assignmentId) {
     });
 }
 
-// Recomputes how many questions currently have *something* entered, purely
-// for the progress bar -- final validation (all-or-nothing) still happens
-// in the submit handler above, this is just visual encouragement.
-function mqRecomputeProgress(questions) {
-    let answered = 0;
-    for (const q of questions) {
-        let done = false;
-        if (q.submission_type === "text") done = !!document.getElementById(`mqText_${q.id}`)?.value.trim();
-        else if (q.submission_type === "photo") done = !!document.getElementById(`mqPhoto_${q.id}`)?.dataset.answerData;
-        else if (q.submission_type === "audio") done = !!document.getElementById(`mqAudioBox_${q.id}`)?.dataset.answerData;
-        else if (q.submission_type === "draw") done = !!__mq.drawn[q.id];
-        else if (q.submission_type === "match") done = !!(__mq.matchState[q.id] && Object.keys(__mq.matchState[q.id].selections).length >= q.interactive.left_items.length);
-        else if (q.submission_type === "drag_drop") done = [...document.querySelectorAll(`.mq-dd-bucket-select[data-qid="${q.id}"]`)].every(s => s.value !== "");
-        if (done) answered++;
-    }
-    const fill = document.getElementById("mqProgressFill");
-    const label = document.getElementById("mqProgressLabel");
-    if (fill) fill.style.width = `${Math.round((answered / questions.length) * 100)}%`;
-    if (label) label.textContent = answered;
-}
-
 function renderMqQuestion(q, idx, total, canSubmit) {
     let answerHtml = "";
     if (!canSubmit) {
@@ -615,17 +580,13 @@ function renderMqQuestion(q, idx, total, canSubmit) {
     }
 
     return `
-        <div class="quiz-card">
-            <div class="quiz-card-head">
-                <span class="quiz-num">${idx + 1}</span>
-                <span class="quiz-tag">${SUBMISSION_TYPE_LABELS[q.submission_type] || q.submission_type}</span>
-            </div>
+        <div class="card" style="margin-bottom:14px">
+            <div class="page-subtitle" style="margin-bottom:8px">سؤال ${idx + 1} از ${total}</div>
             <div id="mqFrame_${q.id}" style="margin-bottom:8px"></div>
-            ${q.prompt_text ? `<div class="quiz-question-text">${escapeHtml(q.prompt_text)}</div>` : ""}
+            ${q.prompt_text ? `<div class="page-subtitle" style="margin-bottom:8px">${escapeHtml(q.prompt_text)}</div>` : ""}
             ${answerHtml}
         </div>`;
 }
-
 
 // -- draw (canvas), scoped per question id --
 let __mqDrawCtx = {};
@@ -641,9 +602,9 @@ function initMqDrawCanvas(qid) {
         const t = e.touches ? e.touches[0] : e;
         return { x: (t.clientX - rect.left) * scaleX, y: (t.clientY - rect.top) * scaleY };
     };
-    const start = (e) => { e.preventDefault(); drawing = true; __mq.drawn[qid] = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+    const start = (e) => { e.preventDefault(); drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
     const move = (e) => { if (!drawing) return; e.preventDefault(); const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); };
-    const end = () => { if (drawing) mqRecomputeProgress(__mq.assignment.questions); drawing = false; };
+    const end = () => { drawing = false; };
     canvas.addEventListener("mousedown", start);
     canvas.addEventListener("mousemove", move);
     window.addEventListener("mouseup", end);
@@ -654,7 +615,6 @@ function initMqDrawCanvas(qid) {
 function clearMqDrawCanvas(qid) {
     const canvas = document.getElementById(`mqCanvas_${qid}`);
     __mqDrawCtx[qid].clearRect(0, 0, canvas.width, canvas.height);
-    __mq.drawn[qid] = false;
 }
 
 // -- match, scoped per question id --
@@ -742,7 +702,6 @@ async function toggleMqRecording(qid) {
             document.getElementById(`mqAudioPreview_${qid}`).innerHTML = `<audio controls src="${dataUrl}" style="width:100%"></audio>`;
             stream.getTracks().forEach(t => t.stop());
             btn.textContent = "🎙️ ضبط دوباره";
-            mqRecomputeProgress(__mq.assignment.questions);
         };
         mediaRecorder.start();
         btn.textContent = "⏹️ توقف ضبط";
@@ -807,46 +766,45 @@ async function startExam(examId) {
     openExamRunner(exam, start.attempt_id);
 }
 
-const EXAM_TYPE_LABELS = { multiple_choice: "چهارگزینه‌ای", true_false: "درست / نادرست", numeric: "عددی", short_answer: "پاسخ کوتاه", long_answer: "تشریحی" };
-let __examSavedCount = new Set();
-
 function questionInput(q) {
     if (q.type === "multiple_choice") {
-        return `<div class="quiz-options">${q.options.map(o => `
-            <label class="quiz-opt"><input type="radio" name="q_${q.id}" value="${o.id}" style="display:none">${escapeHtml(o.text)}</label>
-        `).join("")}</div>`;
+        return q.options.map(o => `
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <input type="radio" name="q_${q.id}" value="${o.id}"> ${escapeHtml(o.text)}
+            </label>
+        `).join("");
     }
     if (q.type === "true_false") {
-        return `<div class="quiz-options">
-            <label class="quiz-opt"><input type="radio" name="q_${q.id}" value="true" style="display:none">✅ درست</label>
-            <label class="quiz-opt"><input type="radio" name="q_${q.id}" value="false" style="display:none">❌ غلط</label>
-        </div>`;
+        return `
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><input type="radio" name="q_${q.id}" value="true"> درست</label>
+            <label style="display:flex;align-items:center;gap:8px"><input type="radio" name="q_${q.id}" value="false"> غلط</label>
+        `;
     }
     if (q.type === "numeric") {
         return `<input class="form-input" name="q_${q.id}" type="number" step="any">`;
+    }
+    if (q.type === "fill_blank") {
+        return `<input class="form-input" name="q_${q.id}" type="text">`;
+    }
+    if (q.type === "custom_html") {
+        return `
+            <iframe id="customFrame_${q.id}" sandbox="allow-scripts" style="width:100%;min-height:360px;border:2px solid var(--line);border-radius:14px;background:#fff;display:block"></iframe>
+            <input type="hidden" name="q_${q.id}">
+            <div class="page-subtitle" id="customStatus_${q.id}" style="margin-top:6px">هنوز نتیجه‌ای از این تمرین دریافت نشده — تمرین رو کامل کن.</div>
+        `;
     }
     return `<textarea class="form-input" name="q_${q.id}" rows="3" style="height:auto;padding:10px 12px"></textarea>`;
 }
 
 function openExamRunner(exam, attemptId) {
-    __examSavedCount = new Set();
     openModal(exam.title, `
-        <div class="quiz-header">
-            <div class="quiz-sub">${escapeHtml(exam.subject_name || "")} — مدت: ${exam.duration_minutes} دقیقه</div>
-            <div class="quiz-title">${escapeHtml(exam.description || exam.title)}</div>
-            <div class="quiz-progress-track"><div class="quiz-progress-fill" id="examProgressFill"></div></div>
-            <div class="quiz-progress-label"><span id="examProgressLabel">0</span> از ${exam.questions.length} سؤال ذخیره شد</div>
-        </div>
+        <div class="page-subtitle" style="margin-bottom:14px">${escapeHtml(exam.description || "")} — مدت: ${exam.duration_minutes} دقیقه</div>
         <form id="examRunnerForm">
             ${exam.questions.map((q, i) => `
-                <div class="quiz-card">
-                    <div class="quiz-card-head">
-                        <span class="quiz-num">${i + 1}</span>
-                        <span class="quiz-tag">${EXAM_TYPE_LABELS[q.type] || q.type}</span>
-                    </div>
-                    <div class="quiz-question-text">${escapeHtml(q.text)}</div>
-                    ${questionInput(q)}
-                    <button type="button" class="secondary-btn" style="margin-top:10px" onclick="saveAnswer(${attemptId}, ${q.id}, '${q.type}', this)">ذخیره این پاسخ</button>
+                <div class="form-group" style="border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:14px">
+                    <label>${i + 1}. ${escapeHtml(q.text)}</label>
+                    <div style="margin-top:8px">${questionInput(q)}</div>
+                    <button type="button" class="secondary-btn" style="margin-top:8px" onclick="saveAnswer(${attemptId}, ${q.id}, '${q.type}', this)">ذخیره این پاسخ</button>
                 </div>
             `).join("")}
             <div class="modal-footer">
@@ -855,6 +813,28 @@ function openExamRunner(exam, attemptId) {
             </div>
         </form>
     `);
+
+    // custom_html questions need real DOM elements to attach to (srcdoc +
+    // a scoped postMessage listener) -- can't be done as a static string.
+    // (Known minor limitation: reopening the same exam runner repeatedly in
+    // one session adds a new listener each time; each stale one references
+    // a detached iframe and just never matches again, so it's inert, not a
+    // correctness bug -- just not maximally tidy.)
+    for (const q of exam.questions) {
+        if (q.type !== "custom_html") continue;
+        const iframe = document.getElementById(`customFrame_${q.id}`);
+        iframe.srcdoc = q.custom_html || "";
+        window.addEventListener("message", (event) => {
+            // only accept messages from THIS question's iframe -- a message
+            // from anywhere else on the page (or another question's iframe)
+            // is ignored, so one interactive question can't spoof another's.
+            if (event.source !== iframe.contentWindow) return;
+            if (!event.data || event.data.type !== "homeworkAnswer") return;
+            const form = document.getElementById("examRunnerForm");
+            form.querySelector(`[name="q_${q.id}"]`).value = String(event.data.value);
+            document.getElementById(`customStatus_${q.id}`).textContent = `نتیجه دریافت شد: ${event.data.value} — حالا «ذخیره این پاسخ» رو بزن.`;
+        });
+    }
 }
 
 async function saveAnswer(attemptId, questionId, type, btn) {
@@ -868,15 +848,6 @@ async function saveAnswer(attemptId, questionId, type, btn) {
     else body.text_answer = raw;
 
     await withToast(() => api.post("/api/student/exam-attempt", { action: "answer", ...body }), "پاسخ ذخیره شد");
-
-    __examSavedCount.add(questionId);
-    const total = form.querySelectorAll(".quiz-card").length;
-    const fill = document.getElementById("examProgressFill");
-    const label = document.getElementById("examProgressLabel");
-    if (fill && label) {
-        fill.style.width = `${Math.round((__examSavedCount.size / total) * 100)}%`;
-        label.textContent = __examSavedCount.size;
-    }
 }
 
 async function submitExam(attemptId, examId) {
@@ -898,8 +869,51 @@ async function viewResult(attemptId) {
             <div class="stat-card"><div class="stat-value">${r.incorrect_count}</div><div class="stat-label">پاسخ نادرست</div></div>
         </div>
         ${r.pending_manual_review > 0 ? `<div class="page-subtitle" style="margin-top:10px">${r.pending_manual_review} پاسخ هنوز نیازمند بررسی دستی معلم است.</div>` : ""}
+        ${r.questions ? `<div style="margin-top:16px;display:flex;flex-direction:column;gap:12px">${r.questions.map(renderResultQuestion).join("")}</div>` : ""}
         <div class="modal-footer"><button class="secondary-btn" onclick="closeModal()">بستن</button></div>
     `);
+}
+
+// One question's review card on the exam-result modal: the student's own
+// answer, the correct answer (safe to reveal now -- this attempt is already
+// submitted), and the teacher's explanation if they wrote one.
+function renderResultQuestion(qr) {
+    const statusBadge = qr.needs_manual_review
+        ? `<span class="status orange">در انتظار بررسی معلم</span>`
+        : qr.is_correct === 1 ? `<span class="status green">درست</span>`
+        : qr.is_correct === 0 ? `<span class="status red">نادرست</span>`
+        : "";
+
+    let answerLine = "";
+    if (qr.type === "multiple_choice" && qr.options) {
+        const chosen = qr.options.find(o => o.id === qr.student_answer.selected_option_id);
+        const correct = qr.options.find(o => o.is_correct);
+        answerLine = `<div>پاسخ شما: ${chosen ? escapeHtml(chosen.text) : "—"}</div>` +
+            (qr.is_correct === 0 && correct ? `<div style="color:var(--green,#1a7f37)">پاسخ درست: ${escapeHtml(correct.text)}</div>` : "");
+    } else if (qr.type === "true_false") {
+        const toLabel = v => v === true || v === 1 ? "درست" : v === false || v === 0 ? "غلط" : "—";
+        answerLine = `<div>پاسخ شما: ${toLabel(qr.student_answer.boolean_answer)}</div>` +
+            (qr.is_correct === 0 ? `<div style="color:var(--green,#1a7f37)">پاسخ درست: ${toLabel(qr.correct_boolean)}</div>` : "");
+    } else if (qr.type === "numeric") {
+        answerLine = `<div>پاسخ شما: ${qr.student_answer.numeric_answer ?? "—"}</div>` +
+            (qr.is_correct === 0 ? `<div style="color:var(--green,#1a7f37)">پاسخ درست: ${qr.correct_numeric}</div>` : "");
+    } else if (qr.type === "fill_blank") {
+        answerLine = `<div>پاسخ شما: ${escapeHtml(qr.student_answer.text_answer || "—")}</div>` +
+            (qr.is_correct === 0 && qr.correct_text ? `<div style="color:var(--green,#1a7f37)">پاسخ قابل‌قبول: ${escapeHtml(qr.correct_text.split(",")[0])}</div>` : "");
+    } else {
+        answerLine = `<div>پاسخ شما: ${escapeHtml(qr.student_answer.text_answer || "—")}</div>`;
+    }
+
+    return `
+        <div class="module" style="padding:12px">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:start">
+                <div>${escapeHtml(qr.text)}</div>
+                ${statusBadge}
+            </div>
+            <div style="margin-top:6px;font-size:14px;color:var(--muted)">${answerLine}</div>
+            ${qr.explanation ? `<div style="margin-top:8px;font-size:13px;padding:8px;background:var(--bg-subtle,#f5f5f5);border-radius:8px">${escapeHtml(qr.explanation)}</div>` : ""}
+        </div>
+    `;
 }
 
 /* =========================================================
@@ -1040,7 +1054,7 @@ async function openConversation(id, title) {
 ========================================================= */
 
 async function renderAnnouncements() {
-    const announcements = await api.get("/api/announcements");
+    const announcements = await api.get("/api/announcements/announcements");
     document.getElementById("content").innerHTML = `
         <div class="page-head"><div><div class="page-title">اطلاعیه‌ها</div><div class="page-subtitle">${announcements.length} اطلاعیه</div></div></div>
         ${announcements.map(a => `

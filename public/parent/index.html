@@ -413,7 +413,7 @@ async function openConversation(id, title) {
 ========================================================= */
 
 async function renderAnnouncements() {
-    const announcements = await api.get("/api/announcements");
+    const announcements = await api.get("/api/announcements/announcements");
     document.getElementById("content").innerHTML = `
         <div class="page-head"><div><div class="page-title">اطلاعیه‌ها</div><div class="page-subtitle">${announcements.length} اطلاعیه</div></div></div>
         ${announcements.map(a => `

@@ -8,6 +8,8 @@ import { getStudentRecord, assertStudentInClass } from "../_shared/ownership.js"
 import { ok, created, errors } from "../_shared/response.js";
 import { requireFields, readJson, withErrorHandling } from "../_shared/validate.js";
 import { syncGradeFromSource } from "../_shared/grades-sync.js";
+import { getQuestionVersion } from "../_shared/question-versions.js";
+import { normalizeSearchText } from "../_shared/search-normalize.js";
 
 async function loadOwnAttempt(db, attemptId, studentId) {
     const attempt = await db.first(`SELECT * FROM exam_attempts WHERE id = ?`, attemptId);
@@ -94,7 +96,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
 
         const exam = await db.first(`SELECT * FROM exams WHERE id = ?`, attempt.exam_id);
         const examQuestions = await db.all(
-            `SELECT q.*, eq.score as max_q_score FROM exam_questions eq
+            `SELECT q.*, eq.score as max_q_score, eq.pinned_version FROM exam_questions eq
               JOIN questions q ON q.id = eq.question_id WHERE eq.exam_id = ?`,
             exam.id
         );
@@ -108,18 +110,44 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
             const answer = answerByQ[question.id];
             if (!answer) continue; // unanswered -> score stays 0/null
 
+            // grade against the pinned snapshot (frozen when this question
+            // was attached to this exam) whenever one exists -- never the
+            // live `questions` row, which the teacher may have edited since.
+            const snapshot = await getQuestionVersion(env, question.id, question.pinned_version);
+            const source = snapshot || question; // legacy fallback: pre-versioning attachment
+
             let isCorrect = null, score = 0, needsManual = 0;
 
             if (question.type === "multiple_choice") {
-                isCorrect = answer.selected_option_id === question.correct_option_id ? 1 : 0;
+                if (snapshot) {
+                    const correctOpt = (snapshot.options || []).find(o => o.is_correct);
+                    isCorrect = correctOpt && answer.selected_option_id === correctOpt.local_id ? 1 : 0;
+                } else {
+                    isCorrect = answer.selected_option_id === question.correct_option_id ? 1 : 0;
+                }
                 score = isCorrect ? question.max_q_score : 0;
             } else if (question.type === "true_false") {
-                isCorrect = answer.boolean_answer === question.correct_boolean ? 1 : 0;
+                isCorrect = answer.boolean_answer === source.correct_boolean ? 1 : 0;
                 score = isCorrect ? question.max_q_score : 0;
             } else if (question.type === "numeric") {
-                const tol = question.numeric_tolerance || 0;
-                isCorrect = Math.abs((answer.numeric_answer ?? NaN) - question.correct_numeric) <= tol ? 1 : 0;
+                const tol = source.numeric_tolerance || 0;
+                isCorrect = Math.abs((answer.numeric_answer ?? NaN) - source.correct_numeric) <= tol ? 1 : 0;
                 score = isCorrect ? question.max_q_score : 0;
+            } else if (question.type === "fill_blank") {
+                // grading_mode is the teacher's own per-question choice --
+                // "manual" behaves exactly like short_answer/long_answer.
+                const mode = source.grading_mode || "auto";
+                if (mode === "manual") {
+                    needsManual = 1;
+                } else {
+                    // correct_text holds a comma-separated list of accepted
+                    // answers; normalized Persian-text compare (same rules
+                    // as bank search), not a strict raw string match.
+                    const accepted = (source.correct_text || "").split(",").map(s => normalizeSearchText(s.trim())).filter(Boolean);
+                    const given = normalizeSearchText((answer.text_answer || "").trim());
+                    isCorrect = given && accepted.includes(given) ? 1 : 0;
+                    score = isCorrect ? question.max_q_score : 0;
+                }
             } else {
                 // short_answer / long_answer -> always manual
                 needsManual = 1;
