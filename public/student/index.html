@@ -77,6 +77,7 @@ const NAV_ITEMS = [
     { key: "dashboard",     icon: "🏠", label: "خانه" },
     { key: "assignments",   icon: "📚", label: "تکالیف" },
     { key: "exams",         icon: "📝", label: "آزمون‌ها" },
+    { key: "practice",      icon: "🧪", label: "تمرین" },
     { key: "attendance",    icon: "📋", label: "حضور و غیاب" },
     { key: "grades",        icon: "🎯", label: "کارنامه" },
     { key: "messages",      icon: "💬", label: "پیام‌ها" },
@@ -97,6 +98,7 @@ async function render(key) {
         if (key === "dashboard") await renderDashboard();
         else if (key === "assignments") await renderAssignments();
         else if (key === "exams") await renderExams();
+        else if (key === "practice") await renderPractice();
         else if (key === "attendance") await renderAttendance();
         else if (key === "grades") await renderGrades();
         else if (key === "messages") await renderMessages();
@@ -917,6 +919,351 @@ function renderResultQuestion(qr) {
 }
 
 /* =========================================================
+   PRACTICE ("تمرین") -- ungraded self-practice from the question bank.
+   Subject/chapter tabs mirror the teacher's بانک سؤال exactly, but this
+   view is read-only: no + درس/+ فصل, no create/edit. Each question is
+   answered and checked one at a time; nothing here ever reaches grades.
+========================================================= */
+
+function practiceTypeLabel(t) {
+    return { multiple_choice: "چندگزینه‌ای", true_false: "درست/غلط", numeric: "عددی", short_answer: "پاسخ کوتاه", long_answer: "تشریحی", fill_blank: "جای‌خالی", custom_html: "HTML تعاملی" }[t] || t;
+}
+
+async function renderPractice() {
+    const subjects = await api.get("/api/student/practice-subjects");
+    cache.practiceFilters = cache.practiceFilters || {};
+    const filters = cache.practiceFilters;
+
+    if (!subjects.length) {
+        document.getElementById("content").innerHTML = `
+            <div class="page-head"><div><div class="page-title">تمرین</div><div class="page-subtitle">تمرین بدون نمره از بانک سؤال</div></div></div>
+            <div class="card"><div class="page-subtitle">هنوز سؤال تمرینی‌ای برای درس‌های شما ثبت نشده — بعداً دوباره سر بزن.</div></div>
+        `;
+        return;
+    }
+
+    const activeSubjectId = filters.subject_id ?? subjects[0].id;
+    filters.subject_id = activeSubjectId;
+    const { chapters, questions } = await api.get(`/api/student/practice-questions?subject_id=${activeSubjectId}${filters.chapter ? `&chapter=${encodeURIComponent(filters.chapter)}` : ""}`);
+
+    // page-top summary -- just a sum of the per-subject counts each
+    // subject tab already carries, no extra request.
+    const totals = subjects.reduce((acc, s) => ({
+        total: acc.total + s.question_count,
+        answered: acc.answered + s.answered_count,
+        correct: acc.correct + s.correct_count,
+        incorrect: acc.incorrect + s.incorrect_count,
+    }), { total: 0, answered: 0, correct: 0, incorrect: 0 });
+
+    cache.practiceQuestions = questions;
+
+    document.getElementById("content").innerHTML = `
+        <div class="page-head">
+            <div><div class="page-title">تمرین</div><div class="page-subtitle">تمرین بدون نمره از بانک سؤال — نتیجه‌اش توی کارنامه‌ات حساب نمی‌شه</div></div>
+            ${questions.length ? `<button class="primary-btn" onclick="startQuickPractice()">⚡ تمرین سریع</button>` : ""}
+        </div>
+        <div class="stats" style="margin-bottom:14px" id="practiceSummary">
+            <div class="stat-card"><div class="stat-value" id="pSumAnswered">${totals.answered} / ${totals.total}</div><div class="stat-label">پاسخ داده‌شده</div></div>
+            <div class="stat-card"><div class="stat-top"><div class="stat-icon">✅</div></div><div class="stat-value" id="pSumCorrect">${totals.correct}</div><div class="stat-label">درست</div></div>
+            <div class="stat-card"><div class="stat-top"><div class="stat-icon">❌</div></div><div class="stat-value" id="pSumIncorrect">${totals.incorrect}</div><div class="stat-label">غلط</div></div>
+            <div class="stat-card"><div class="stat-value" id="pSumRemaining">${totals.total - totals.answered}</div><div class="stat-label">باقی‌مانده</div></div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+            ${subjects.map(s => `
+                <button class="${Number(activeSubjectId) === s.id ? "primary-btn" : "secondary-btn"}" style="padding:6px 12px" onclick="cache.practiceFilters={subject_id:${s.id}}; renderPractice()">${escapeHtml(s.name)} <span style="opacity:.7">(${s.question_count})</span></button>
+            `).join("")}
+        </div>
+        ${chapters.length ? `
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding-inline-start:14px">
+                <span class="page-subtitle" style="margin:0">فصل:</span>
+                <button class="${!filters.chapter ? "primary-btn" : "secondary-btn"}" style="padding:4px 10px;font-size:13px" onclick="cache.practiceFilters.chapter=null; renderPractice()">همه</button>
+                ${chapters.map(c => `
+                    <button class="${filters.chapter === c ? "primary-btn" : "secondary-btn"}" style="padding:4px 10px;font-size:13px" onclick="cache.practiceFilters.chapter=${escapeAttr(c)}; renderPractice()">${escapeHtml(c)}</button>
+                `).join("")}
+            </div>
+        ` : ""}
+        <div id="practiceList" style="display:flex;flex-direction:column;gap:12px">
+            ${questions.map(renderPracticeQuestion).join("") || `<div class="card"><div class="page-subtitle">سؤالی در این بخش نیست</div></div>`}
+        </div>
+    `;
+
+    for (const question of questions) {
+        if (question.type !== "custom_html") continue;
+        const iframe = document.getElementById(`practiceFrame_${question.id}`);
+        if (!iframe) continue;
+        iframe.srcdoc = question.custom_html || "";
+        window.addEventListener("message", (event) => {
+            if (event.source !== iframe.contentWindow) return;
+            if (!event.data || event.data.type !== "homeworkAnswer") return;
+            document.getElementById(`practiceStatus_${question.id}`).textContent = `نتیجه دریافت شد: ${event.data.value}`;
+            document.getElementById(`practiceCheckBtn_${question.id}`).disabled = false;
+        });
+    }
+}
+
+function renderPracticeQuestion(q) {
+    const already = q.already_answered;
+    const badge = already
+        ? already.is_correct === 1 ? `<span class="status green">قبلاً درست پاسخ داده‌ای</span>`
+        : already.is_correct === 0 ? `<span class="status red">قبلاً نادرست پاسخ داده‌ای</span>`
+        : `<span class="status orange">قبلاً پاسخ داده‌ای</span>`
+        : "";
+
+    return `
+        <div class="module" id="practiceCard_${q.id}" style="padding:14px">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:start">
+                <div><b>${escapeHtml(q.text)}</b><div class="page-subtitle" style="margin-top:2px">${practiceTypeLabel(q.type)}${q.chapter ? " · " + escapeHtml(q.chapter) : ""}${q.difficulty ? " · " + difficultyLabelFa(q.difficulty) : ""}</div></div>
+                ${badge}
+            </div>
+            <div style="margin-top:10px">${practiceQuestionInput(q)}</div>
+            <div style="margin-top:10px;display:flex;align-items:center;gap:10px">
+                ${q.type === "custom_html"
+                    ? `<button class="primary-btn" id="practiceCheckBtn_${q.id}" disabled onclick="submitPracticeAnswer(${q.id}, '${q.type}')">ثبت</button>`
+                    : `<button class="primary-btn" onclick="submitPracticeAnswer(${q.id}, '${q.type}')">بررسی پاسخ</button>`}
+            </div>
+            <div id="practiceResult_${q.id}" style="margin-top:8px"></div>
+        </div>
+    `;
+}
+
+function difficultyLabelFa(d) {
+    return { easy: "آسان", medium: "متوسط", hard: "دشوار" }[d] || d;
+}
+
+function practiceQuestionInput(q) {
+    if (q.type === "multiple_choice") {
+        return q.options.map(o => `
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <input type="radio" name="pq_${q.id}" value="${o.id}"> ${escapeHtml(o.text)}
+                ${o.is_correct === true ? ` <span style="color:var(--green,#1a7f37);font-size:12px">(پاسخ درست)</span>` : ""}
+            </label>
+        `).join("");
+    }
+    if (q.type === "true_false") {
+        return `
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><input type="radio" name="pq_${q.id}" value="true"> درست</label>
+            <label style="display:flex;align-items:center;gap:8px"><input type="radio" name="pq_${q.id}" value="false"> غلط</label>
+        `;
+    }
+    if (q.type === "numeric") return `<input class="form-input" name="pq_${q.id}" type="number" step="any">`;
+    if (q.type === "fill_blank") return `<input class="form-input" name="pq_${q.id}" type="text">`;
+    if (q.type === "custom_html") {
+        return `
+            <iframe id="practiceFrame_${q.id}" sandbox="allow-scripts" style="width:100%;min-height:360px;border:2px solid var(--line);border-radius:14px;background:#fff;display:block"></iframe>
+            <div class="page-subtitle" id="practiceStatus_${q.id}" style="margin-top:6px">هنوز نتیجه‌ای از این تمرین دریافت نشده — تمرین رو کامل کن.</div>
+        `;
+    }
+    return `<textarea class="form-input" name="pq_${q.id}" rows="3" style="height:auto;padding:10px 12px"></textarea>`;
+}
+
+async function submitPracticeAnswer(questionId, type) {
+    const card = document.getElementById(`practiceCard_${questionId}`);
+    const body = { question_id: questionId };
+    if (type === "multiple_choice") {
+        const picked = card.querySelector(`input[name="pq_${questionId}"]:checked`);
+        if (!picked) { alert("یک گزینه رو انتخاب کن"); return; }
+        body.selected_option_id = Number(picked.value);
+    } else if (type === "true_false") {
+        const picked = card.querySelector(`input[name="pq_${questionId}"]:checked`);
+        if (!picked) { alert("یکی رو انتخاب کن"); return; }
+        body.boolean_answer = picked.value === "true";
+    } else if (type === "numeric") {
+        body.numeric_answer = Number(card.querySelector(`[name="pq_${questionId}"]`).value);
+    } else if (type !== "custom_html") {
+        body.text_answer = card.querySelector(`[name="pq_${questionId}"]`).value;
+    }
+
+    const result = await api.post("/api/student/practice-submit", body);
+    const box = document.getElementById(`practiceResult_${questionId}`);
+    const badge = result.is_correct === 1 ? `<span class="status green">درست 🎉</span>`
+        : result.is_correct === 0 ? `<span class="status red">نادرست</span>`
+        : `<span class="status orange">ثبت شد</span>`;
+    let refLine = "";
+    if (result.correct_boolean !== undefined) refLine = `<div style="margin-top:6px">پاسخ درست: ${result.correct_boolean ? "درست" : "غلط"}</div>`;
+    else if (result.correct_numeric !== undefined) refLine = `<div style="margin-top:6px">پاسخ درست: ${result.correct_numeric}</div>`;
+    else if (result.correct_text) refLine = `<div style="margin-top:6px">پاسخ نمونه: ${escapeHtml(result.correct_text.split(",")[0])}</div>`;
+
+    box.innerHTML = `
+        ${badge}
+        ${refLine}
+        ${result.explanation ? `<div style="margin-top:8px;font-size:13px;padding:8px;background:var(--bg-subtle,#f5f5f5);border-radius:8px">${escapeHtml(result.explanation)}</div>` : ""}
+    `;
+
+    refreshPracticeSummary();
+}
+
+// Cheap re-aggregate (same GROUP BY query the tab bar itself uses) so the
+// top summary reflects this answer right away, without re-rendering the
+// whole question list (which would lose whatever the student was mid-typing
+// on other questions on the page).
+async function refreshPracticeSummary() {
+    const subjects = await api.get("/api/student/practice-subjects");
+    const totals = subjects.reduce((acc, s) => ({
+        total: acc.total + s.question_count,
+        answered: acc.answered + s.answered_count,
+        correct: acc.correct + s.correct_count,
+        incorrect: acc.incorrect + s.incorrect_count,
+    }), { total: 0, answered: 0, correct: 0, incorrect: 0 });
+    const el = document.getElementById("practiceSummary");
+    if (!el) return;
+    document.getElementById("pSumAnswered").textContent = `${totals.answered} / ${totals.total}`;
+    document.getElementById("pSumCorrect").textContent = totals.correct;
+    document.getElementById("pSumIncorrect").textContent = totals.incorrect;
+    document.getElementById("pSumRemaining").textContent = totals.total - totals.answered;
+}
+
+/* =========================================================
+   QUICK PRACTICE ("تمرین سریع") -- a random sample of the currently
+   loaded practice questions (whatever subject/chapter tab is active),
+   shown one at a time in a modal with a progress bar. No new endpoint:
+   it just samples from `cache.practiceQuestions`, which renderPractice()
+   already fetched for the list view below it.
+========================================================= */
+
+let __quickPractice = null;
+
+function startQuickPractice() {
+    const pool = cache.practiceQuestions || [];
+    if (!pool.length) { alert("سؤالی برای تمرین سریع در این بخش نیست"); return; }
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    __quickPractice = { questions: shuffled.slice(0, Math.min(10, shuffled.length)), idx: 0, correct: 0, incorrect: 0, answered: 0 };
+    window.addEventListener("message", quickPracticeMessageHandler);
+    renderQuickPracticeStep();
+}
+
+function renderQuickPracticeStep() {
+    const state = __quickPractice;
+    const q = state.questions[state.idx];
+    const pct = Math.round((state.idx / state.questions.length) * 100);
+
+    openModal("⚡ تمرین سریع", `
+        <div style="height:8px;background:var(--surface2,#eee);border-radius:6px;overflow:hidden;margin-bottom:14px">
+            <div style="height:100%;width:${pct}%;background:var(--primary,#2f6feb);transition:width .3s"></div>
+        </div>
+        <div class="page-subtitle" style="margin-bottom:10px">سؤال ${state.idx + 1} از ${state.questions.length}</div>
+        <div><b>${escapeHtml(q.text)}</b></div>
+        <div style="margin-top:10px">${quickPracticeInput(q)}</div>
+        <div style="margin-top:10px">
+            ${q.type === "custom_html"
+                ? `<button class="primary-btn" id="qpCheckBtn" disabled onclick="submitQuickPracticeAnswer()">ثبت</button>`
+                : `<button class="primary-btn" onclick="submitQuickPracticeAnswer()">بررسی پاسخ</button>`}
+        </div>
+        <div id="qpResult" style="margin-top:8px"></div>
+        <div class="modal-footer"><button type="button" class="secondary-btn" onclick="cancelQuickPractice()">پایان زودهنگام</button></div>
+    `);
+
+    if (q.type === "custom_html") {
+        document.getElementById("qpFrame").srcdoc = q.custom_html || "";
+    }
+}
+
+function quickPracticeInput(q) {
+    if (q.type === "multiple_choice") {
+        return q.options.map(o => `
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <input type="radio" name="qpAnswer" value="${o.id}"> ${escapeHtml(o.text)}
+            </label>
+        `).join("");
+    }
+    if (q.type === "true_false") {
+        return `
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><input type="radio" name="qpAnswer" value="true"> درست</label>
+            <label style="display:flex;align-items:center;gap:8px"><input type="radio" name="qpAnswer" value="false"> غلط</label>
+        `;
+    }
+    if (q.type === "numeric") return `<input class="form-input" id="qpAnswer" type="number" step="any">`;
+    if (q.type === "fill_blank") return `<input class="form-input" id="qpAnswer" type="text">`;
+    if (q.type === "custom_html") {
+        return `
+            <iframe id="qpFrame" sandbox="allow-scripts" style="width:100%;min-height:320px;border:2px solid var(--line);border-radius:14px;background:#fff;display:block"></iframe>
+            <div class="page-subtitle" id="qpStatus" style="margin-top:6px">هنوز نتیجه‌ای از این تمرین دریافت نشده — تمرین رو کامل کن.</div>
+        `;
+    }
+    return `<textarea class="form-input" id="qpAnswer" rows="3" style="height:auto;padding:10px 12px"></textarea>`;
+}
+
+// Looked up by id at call time rather than captured once, so this one
+// listener (registered once per quick-practice round in startQuickPractice)
+// keeps working correctly across every step's fresh iframe/modal re-render.
+function quickPracticeMessageHandler(event) {
+    const iframe = document.getElementById("qpFrame");
+    if (!iframe || event.source !== iframe.contentWindow) return;
+    if (!event.data || event.data.type !== "homeworkAnswer") return;
+    const status = document.getElementById("qpStatus");
+    if (status) status.textContent = `نتیجه دریافت شد: ${event.data.value}`;
+    const btn = document.getElementById("qpCheckBtn");
+    if (btn) btn.disabled = false;
+}
+
+async function submitQuickPracticeAnswer() {
+    const state = __quickPractice;
+    const q = state.questions[state.idx];
+    const body = { question_id: q.id };
+
+    if (q.type === "multiple_choice") {
+        const picked = document.querySelector('input[name="qpAnswer"]:checked');
+        if (!picked) { alert("یک گزینه رو انتخاب کن"); return; }
+        body.selected_option_id = Number(picked.value);
+    } else if (q.type === "true_false") {
+        const picked = document.querySelector('input[name="qpAnswer"]:checked');
+        if (!picked) { alert("یکی رو انتخاب کن"); return; }
+        body.boolean_answer = picked.value === "true";
+    } else if (q.type === "numeric") {
+        body.numeric_answer = Number(document.getElementById("qpAnswer").value);
+    } else if (q.type !== "custom_html") {
+        body.text_answer = document.getElementById("qpAnswer").value;
+    }
+
+    const result = await api.post("/api/student/practice-submit", body);
+    state.answered++;
+    if (result.is_correct === 1) state.correct++;
+    else if (result.is_correct === 0) state.incorrect++;
+
+    const badge = result.is_correct === 1 ? `<span class="status green">درست 🎉</span>`
+        : result.is_correct === 0 ? `<span class="status red">نادرست</span>`
+        : `<span class="status orange">ثبت شد</span>`;
+    let refLine = "";
+    if (result.correct_boolean !== undefined) refLine = `<div style="margin-top:6px">پاسخ درست: ${result.correct_boolean ? "درست" : "غلط"}</div>`;
+    else if (result.correct_numeric !== undefined) refLine = `<div style="margin-top:6px">پاسخ درست: ${result.correct_numeric}</div>`;
+    else if (result.correct_text) refLine = `<div style="margin-top:6px">پاسخ نمونه: ${escapeHtml(result.correct_text.split(",")[0])}</div>`;
+
+    document.getElementById("qpResult").innerHTML = `
+        ${badge}
+        ${refLine}
+        ${result.explanation ? `<div style="margin-top:8px;font-size:13px;padding:8px;background:var(--bg-subtle,#f5f5f5);border-radius:8px">${escapeHtml(result.explanation)}</div>` : ""}
+        <button type="button" class="primary-btn" style="margin-top:10px" onclick="advanceQuickPractice()">${state.idx + 1 < state.questions.length ? "سؤال بعدی" : "پایان"}</button>
+    `;
+    const checkBtn = document.getElementById("qpCheckBtn");
+    if (checkBtn) checkBtn.disabled = true;
+}
+
+function advanceQuickPractice() {
+    const state = __quickPractice;
+    state.idx++;
+    if (state.idx >= state.questions.length) { finishQuickPractice(); return; }
+    renderQuickPracticeStep();
+}
+
+function cancelQuickPractice() {
+    window.removeEventListener("message", quickPracticeMessageHandler);
+    closeModal();
+    renderPractice(); // whatever was answered before quitting is already saved -- refresh the summary/list to match
+}
+
+function finishQuickPractice() {
+    const state = __quickPractice;
+    window.removeEventListener("message", quickPracticeMessageHandler);
+    openModal("نتیجه‌ی تمرین سریع", `
+        <div class="stats" style="grid-template-columns:repeat(3,1fr)">
+            <div class="stat-card"><div class="stat-value">${state.correct}</div><div class="stat-label">درست</div></div>
+            <div class="stat-card"><div class="stat-value">${state.incorrect}</div><div class="stat-label">نادرست</div></div>
+            <div class="stat-card"><div class="stat-value">${state.answered}</div><div class="stat-label">مجموع پاسخ داده‌شده</div></div>
+        </div>
+        <div class="modal-footer"><button class="primary-btn" onclick="closeModal(); renderPractice();">بستن</button></div>
+    `);
+}
+
+/* =========================================================
    ATTENDANCE
 ========================================================= */
 
@@ -1091,6 +1438,7 @@ const HELP_SECTIONS = [
     { icon: "🏠", title: "خانه", body: "نمای کلی وضعیت تحصیلی: آزمون‌های پیش رو، تعداد روزهای حاضر/غایب و میانگین کل نمرات." },
     { icon: "📚", title: "تکالیف", body: "فهرست تکالیف با مهلت ارسال. بسته به نوع تکلیف باید پاسخ متنی بنویسی، عکس بگیری، صدا ضبط کنی، نقاشی بکشی، یا در تطبیق/دسته‌بندی شرکت کنی — این دو مورد آخر بلافاصله بعد از ارسال نمره‌ات را نشان می‌دهند." },
     { icon: "📝", title: "آزمون‌ها", body: "آزمون‌های فعال کلاست را همینجا شروع می‌کنی و پاسخ می‌دهی؛ می‌توانی هر پاسخ را جدا ذخیره کنی و در پایان ارسال نهایی بزنی. نتیجه‌ی آزمون‌های قبلی هم همینجا قابل مشاهده است." },
+    { icon: "🧪", title: "تمرین", body: "سؤال‌هایی از بانک سؤال معلم که فقط برای تمرینِ خودت هستند — نتیجه‌شان هیچ‌وقت در کارنامه حساب نمی‌شود. با تب‌های درس و فصل مثل بانک سؤال معلم پیش می‌روی، هر سؤال را جواب می‌دهی و بلافاصله می‌فهمی درست بوده یا نه (برای بعضی سؤال‌ها هم توضیح یا پاسخ نمونه نشان داده می‌شود). می‌توانی هر سؤال را چند بار دوباره امتحان کنی. بالای صفحه خلاصه‌ی تعداد درست/غلط/باقی‌مانده‌ات را می‌بینی، و دکمه‌ی «⚡ تمرین سریع» چند سؤال تصادفی از همان بخش را پشت‌سرهم با نوار پیشرفت جلو می‌برد." },
     { icon: "📋", title: "حضور و غیاب", body: "سابقه‌ی کامل حضور، غیاب، تأخیر و موجه‌بودنت در طول سال." },
     { icon: "🎯", title: "کارنامه", body: "میانگین نمرات هر درس به همراه منبع هر نمره (تکلیف/آزمون/دستی) و بازخورد معلم — دکمه‌ی چاپ برای خروجی PDF هم موجود است." },
     { icon: "💬", title: "پیام‌ها", body: "گفتگوهایی که معلم یا مدیر مدرسه با تو شروع کرده — می‌توانی پاسخ بدهی، ولی نمی‌توانی خودت گفتگوی جدید شروع کنی." },
