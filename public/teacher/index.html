@@ -901,7 +901,7 @@ async function toggleQuestionPractice(id) {
 }
 
 async function promptNewSubject() {
-    const name = prompt("نام درس جدید:");
+    const name = await promptModal("درس جدید", "نام درس جدید:");
     if (!name || !name.trim()) return;
     await withToast(() => api.post("/api/admin/subjects", { name: name.trim() }), "درس ساخته شد");
     cache.subjects = null;
@@ -910,7 +910,7 @@ async function promptNewSubject() {
 
 async function promptRenameSubject(id) {
     const subject = cache.subjects.find(s => s.id === id);
-    const name = prompt("نام جدید درس:", subject ? subject.name : "");
+    const name = await promptModal("ویرایش نام درس", "نام جدید درس:", subject ? subject.name : "");
     if (!name || !name.trim() || (subject && name.trim() === subject.name)) return;
     await withToast(() => api.put("/api/admin/subjects", { id, name: name.trim() }), "نام درس بروزرسانی شد");
     cache.subjects = null;
@@ -918,14 +918,17 @@ async function promptRenameSubject(id) {
 }
 
 // A chapter isn't a separate managed entity -- it's just whatever text a
-// teacher puts in a question's "فصل" field. "+ فصل جدید" only sets it as
-// the active filter/prefill so the very next question created lands in it;
-// it becomes a real, permanent tab as soon as any question actually uses it.
-function promptNewChapterTab() {
-    const name = prompt("نام فصل جدید (بعد از افزودن اولین سؤال با این فصل، به‌صورت دائم به‌عنوان یک تب نشان داده می‌شود):");
+// teacher puts in a question's "فصل" field, so it only becomes a real,
+// permanent tab once a question actually uses it. Rather than silently
+// setting a filter that shows an empty list (which looked like nothing
+// happened), we now walk the teacher straight into creating that first
+// question with the chapter (and current subject) already filled in.
+async function promptNewChapterTab() {
+    const name = await promptModal("فصل جدید", "نام فصل جدید — بعد از ثبت اولین سؤال با این فصل، به‌صورت دائم به‌عنوان یک تب نشان داده می‌شود:");
     if (!name || !name.trim()) return;
     cache.questionFilters.chapter = name.trim();
-    renderQuestions();
+    toast(`حالا اولین سؤال فصل «${name.trim()}» رو ثبت کن تا این فصل به‌صورت دائم به یک تب تبدیل بشه`);
+    openQuestionForm(); // reads subject_id/chapter defaults straight from cache.questionFilters, set just above
 }
 
 function openFullscreenHtmlPreview(styleCss, html) {
