@@ -705,16 +705,12 @@ async function renderQuestions() {
     const questions = await api.get(`/api/teacher/questions?${params.toString()}`);
     cache.questions = questions;
 
-    // chapter sub-tabs are derived from whatever chapter values this
-    // teacher has actually used within the selected subject -- a second,
-    // chapter-filter-less fetch of the same subject/scope so the chapter
-    // bar doesn't itself disappear once a chapter filter narrows `questions`.
-    let chaptersInSubject = [];
-    if (scope === "mine" && filters.subject_id) {
-        const p2 = new URLSearchParams({ scope, subject_id: filters.subject_id });
-        const allInSubject = await api.get(`/api/teacher/questions?${p2.toString()}`);
-        chaptersInSubject = [...new Set(allInSubject.map(q => q.chapter).filter(Boolean))].sort();
-    }
+    // chapters are a real, manageable entity now (see chapters.js) -- only
+    // fetched for "بانک من" since the public bank's chapter text is other
+    // teachers' own, not something this teacher can create/rename/describe.
+    const chapters = (scope === "mine" && filters.subject_id)
+        ? await api.get(`/api/teacher/chapters?subject_id=${filters.subject_id}`)
+        : [];
     const activeSubject = subjects.find(s => s.id === Number(filters.subject_id));
 
     document.getElementById("content").innerHTML = `
@@ -739,13 +735,22 @@ async function renderQuestions() {
             ${scope === "mine" && activeSubject ? `<button class="secondary-btn" style="padding:6px 8px" title="ویرایش نام این درس" onclick="promptRenameSubject(${activeSubject.id})">✏️</button>` : ""}
         </div>
         ${scope === "mine" && filters.subject_id ? `
-            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding-inline-start:14px">
-                <span class="page-subtitle" style="margin:0">فصل:</span>
-                <button class="${!filters.chapter ? "primary-btn" : "secondary-btn"}" style="padding:4px 10px;font-size:13px" onclick="cache.questionFilters.chapter=null; renderQuestions()">همه</button>
-                ${chaptersInSubject.map(c => `
-                    <button class="${filters.chapter === c ? "primary-btn" : "secondary-btn"}" style="padding:4px 10px;font-size:13px" onclick="cache.questionFilters.chapter=${escapeAttr(c)}; renderQuestions()">${escapeHtml(c)}</button>
-                `).join("")}
-                <button class="secondary-btn" style="padding:4px 10px;font-size:13px" onclick="promptNewChapterTab()">+ فصل جدید</button>
+            <div class="module" style="margin-bottom:10px">
+                <div class="module-body" style="display:flex;flex-direction:column;gap:6px;max-width:420px">
+                    <span class="page-subtitle" style="margin:0 0 2px">فصل‌ها:</span>
+                    <button class="${!filters.chapter ? "primary-btn" : "secondary-btn"}" style="text-align:right;padding:8px 12px" onclick="cache.questionFilters.chapter=null; renderQuestions()">همه</button>
+                    ${chapters.map(c => `
+                        <div style="display:flex;align-items:stretch;gap:6px">
+                            <button class="${filters.chapter === c.name ? "primary-btn" : "secondary-btn"}" style="flex:1;text-align:right;padding:8px 12px" onclick="cache.questionFilters.chapter=${escapeAttr(c.name)}; renderQuestions()">
+                                <div>${escapeHtml(c.name)}${c.question_count !== null ? ` <span style="opacity:.75;font-weight:normal">(${c.question_count})</span>` : ""}</div>
+                                ${c.description ? `<div class="page-subtitle" style="margin-top:3px;font-weight:normal">${escapeHtml(c.description)}</div>` : ""}
+                            </button>
+                            ${c.id ? `<button class="secondary-btn" style="padding:0 10px" title="ویرایش فصل" onclick="openChapterForm(${escapeAttr(c)})">✏️</button>` : ""}
+                            ${c.id ? `<button class="secondary-btn" style="padding:0 10px" title="حذف فصل" onclick="deleteChapter(${c.id})">🗑️</button>` : ""}
+                        </div>
+                    `).join("")}
+                    <button class="secondary-btn" style="padding:8px 12px" onclick="openChapterForm(null)">+ فصل جدید</button>
+                </div>
             </div>
         ` : ""}
         <div id="qSelectionBar"></div>
@@ -929,18 +934,46 @@ async function promptRenameSubject(id) {
     renderQuestions();
 }
 
-// A chapter isn't a separate managed entity -- it's just whatever text a
-// teacher puts in a question's "فصل" field, so it only becomes a real,
-// permanent tab once a question actually uses it. Rather than silently
-// setting a filter that shows an empty list (which looked like nothing
-// happened), we now walk the teacher straight into creating that first
-// question with the chapter (and current subject) already filled in.
-async function promptNewChapterTab() {
-    const name = await promptModal("فصل جدید", "نام فصل جدید — بعد از ثبت اولین سؤال با این فصل، به‌صورت دائم به‌عنوان یک تب نشان داده می‌شود:");
-    if (!name || !name.trim()) return;
-    cache.questionFilters.chapter = name.trim();
-    toast(`حالا اولین سؤال فصل «${name.trim()}» رو ثبت کن تا این فصل به‌صورت دائم به یک تب تبدیل بشه`);
-    openQuestionForm(); // reads subject_id/chapter defaults straight from cache.questionFilters, set just above
+// A chapter is now a real, manageable row (see functions/api/teacher/chapters.js)
+// -- can be created empty (no question needed first), renamed (cascades onto
+// every existing question's plain-text chapter field), described, or deleted
+// (deleting only removes the managed row/description; any questions already
+// using that chapter text keep it and the tab reappears via the legacy
+// fallback in chapters.js's GET, so nothing is ever silently lost).
+async function openChapterForm(chapter) {
+    const isEdit = !!(chapter && chapter.id);
+    openModal(isEdit ? "ویرایش فصل" : "فصل جدید", `
+        <form id="chapterForm">
+            <div class="form-group"><label>نام فصل</label><input class="form-input" name="name" value="${escapeHtml(chapter?.name || "")}" required></div>
+            <div class="form-group"><label>توضیحات (اختیاری)</label><textarea class="form-input" name="description" rows="3" style="height:auto;padding:10px 12px">${escapeHtml(chapter?.description || "")}</textarea></div>
+            ${!isEdit ? `<div class="page-subtitle" style="margin-bottom:10px">این فصل همین الان به‌صورت یک تب دائمی اضافه می‌شه — لازم نیست حتماً سؤالی داخلش ثبت کنی.</div>` : ""}
+            <div class="modal-footer">
+                <button type="submit" class="primary-btn">${isEdit ? "ذخیره" : "ساخت فصل"}</button>
+                <button type="button" class="secondary-btn" onclick="closeModal()">انصراف</button>
+            </div>
+        </form>
+    `);
+    document.getElementById("chapterForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const body = { name: fd.get("name"), description: fd.get("description") || null };
+        if (isEdit) {
+            body.id = chapter.id;
+            await withToast(() => api.put("/api/teacher/chapters", body), "فصل به‌روزرسانی شد");
+        } else {
+            body.subject_id = cache.questionFilters.subject_id;
+            await withToast(() => api.post("/api/teacher/chapters", body), "فصل ساخته شد");
+        }
+        closeModal();
+        renderQuestions();
+    });
+}
+
+async function deleteChapter(id) {
+    if (!confirm("این فصل حذف بشه؟ سؤال‌هایی که قبلاً با این فصل ثبت شده‌اند دست‌نخورده می‌مانند.")) return;
+    await withToast(() => api.del("/api/teacher/chapters", { id }), "فصل حذف شد");
+    if (cache.questionFilters?.chapter) cache.questionFilters.chapter = null;
+    renderQuestions();
 }
 
 function openFullscreenHtmlPreview(styleCss, html) {

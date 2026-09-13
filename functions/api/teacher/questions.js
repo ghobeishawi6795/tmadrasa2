@@ -8,6 +8,7 @@ import { ok, created, errors } from "../_shared/response.js";
 import { requireFields, readJson, withErrorHandling, requireMaxLength } from "../_shared/validate.js";
 import { snapshotQuestionVersion } from "../_shared/question-versions.js";
 import { normalizeSearchText, normalizeSql } from "../_shared/search-normalize.js";
+import { upsertChapterFromText } from "./chapters.js";
 
 const VALID_TYPES = ["multiple_choice", "true_false", "numeric", "short_answer", "long_answer", "fill_blank", "custom_html"];
 const VALID_DIFFICULTIES = ["easy", "medium", "hard"];
@@ -115,6 +116,9 @@ export async function createQuestionRecord(env, { schoolId, teacherId, body }) {
     }
 
     await snapshotQuestionVersion(env, questionId);
+    if (meta.chapter && body.subject_id) {
+        await upsertChapterFromText(env, { schoolId, teacherId, subjectId: body.subject_id, chapterName: meta.chapter });
+    }
     return questionId;
 }
 
@@ -284,6 +288,11 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     // Exams already attached (with their own pinned_version) are unaffected.
     await db.run(`UPDATE questions SET version = version + 1 WHERE id = ?`, question.id);
     await snapshotQuestionVersion(env, question.id);
+
+    const finalSubjectId = body.subject_id === undefined ? question.subject_id : (body.subject_id || null);
+    if (meta.chapter && finalSubjectId) {
+        await upsertChapterFromText(env, { schoolId: user.school_id, teacherId: teacher.id, subjectId: finalSubjectId, chapterName: meta.chapter });
+    }
 
     return ok(null, "سؤال بروزرسانی شد");
 });
