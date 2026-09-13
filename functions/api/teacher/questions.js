@@ -132,15 +132,20 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const subjectId = url.searchParams.get("subject_id");
     const favoriteOnly = url.searchParams.get("favorite") === "1";
     const tag = url.searchParams.get("tag");
+    const ids = url.searchParams.get("ids"); // comma-separated ids, e.g. "3,7,9" -- used by the teacher-side exam/assignment preview to fetch full answer-key data for a fixed set of already-attached questions in one call
 
     // "public" browses the whole SCHOOL's approved-public bank (any
     // teacher's), always still school_id-scoped -- see 023_question_visibility.sql
     // for why that scoping matters (a subtle cross-tenant gap noticed in
     // دبستان's own equivalent query was deliberately not repeated here).
-    const where = scope === "public"
+    // ids-lookup mode always forces "mine" ownership scoping regardless of a
+    // caller-supplied `scope=public`, since it returns full answer-key data
+    // (options/correct_*) that must never leak across teachers.
+    const effectiveScope = ids ? "mine" : scope;
+    const where = effectiveScope === "public"
         ? ["school_id = ?", "visibility = 'public'", "deleted_at IS NULL"]
         : ["teacher_id = ?", "school_id = ?", "deleted_at IS NULL"];
-    const binds = scope === "public" ? [user.school_id] : [teacher.id, user.school_id];
+    const binds = effectiveScope === "public" ? [user.school_id] : [teacher.id, user.school_id];
 
     if (search) {
         const ns = normalizeSearchText(search);
@@ -157,6 +162,16 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
         // LIKE match can't false-positive on a substring of a longer tag.
         where.push("((',' || REPLACE(COALESCE(tags,''), ' ', '') || ',') LIKE ?)");
         binds.push(`%,${tag.replace(/\s/g, "")},%`);
+    }
+    if (ids) {
+        // preview mode always passes ids scoped to "mine" ownership regardless
+        // of `scope` -- an exam/assignment can only ever contain questions this
+        // teacher owns (see exam-questions.js's loadQuestionOwnedByTeacher), so
+        // there's no cross-teacher exposure risk in trusting this id list.
+        const idList = ids.split(",").map(s => Number(s.trim())).filter(n => Number.isInteger(n) && n > 0);
+        if (!idList.length) throw errors.validation("ids نامعتبر است");
+        where.push(`id IN (${idList.map(() => "?").join(",")})`);
+        binds.push(...idList);
     }
 
     const db = q(env);

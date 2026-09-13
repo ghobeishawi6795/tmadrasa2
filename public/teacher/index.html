@@ -60,6 +60,16 @@
     </div>
 </div>
 
+<div class="modal-overlay" id="previewModalOverlay" style="z-index:400" onclick="closePreviewModal(event)">
+    <div class="modal" style="max-width:560px">
+        <div class="modal-head">
+            <div class="modal-title" id="previewModalTitle">پیش‌نمایش</div>
+            <button class="close" onclick="closePreviewModal()">×</button>
+        </div>
+        <div id="previewModalContent"></div>
+    </div>
+</div>
+
 <script src="../assets/js/jalali.js"></script>
 <script src="../assets/js/api.js"></script>
 <script src="../assets/js/app.js"></script>
@@ -237,6 +247,7 @@ async function renderAssignments() {
                             <td>${a.submission_count}</td>
                             <td style="display:flex;gap:6px">
                                 <button class="secondary-btn" onclick="${a.is_multi_question ? `openMultiSubmissionsList(${a.id}, ${escapeAttr(a.title)})` : `openSubmissionsList(${a.id}, ${escapeAttr(a.title)}, ${escapeAttr(a.submission_type)})`}">مشاهده پاسخ‌ها</button>
+                                <button class="secondary-btn" onclick="previewAssignment(${a.id})">👁️ پیش‌نمایش</button>
                                 <button class="secondary-btn" onclick="deleteAssignment(${a.id})">حذف</button>
                             </td>
                         </tr>
@@ -539,6 +550,7 @@ async function renderExams() {
                             <td><span class="status ${examStatusColor(e.status)}">${examStatusLabel(e.status)}</span></td>
                             <td style="display:flex;gap:6px;flex-wrap:wrap">
                                 <button class="secondary-btn" onclick="openExamQuestions(${e.id})">سؤالات</button>
+                                <button class="secondary-btn" onclick="previewExam(${e.id})">👁️ پیش‌نمایش</button>
                                 ${e.status === "draft" ? `<button class="secondary-btn" onclick="publishExam(${e.id})">انتشار</button>` : ""}
                                 ${e.status === "published" ? `<button class="secondary-btn" onclick="closeExam(${e.id})">بستن</button>` : ""}
                                 <button class="secondary-btn" onclick="deleteExam(${e.id})">حذف</button>
@@ -1206,6 +1218,7 @@ function openQuestionForm(existing) {
             <div id="typeFields"></div>
             <div class="modal-footer">
                 <button type="submit" class="primary-btn">${isEdit ? "ذخیره تغییرات" : "ثبت سؤال"}</button>
+                <button type="button" class="secondary-btn" id="qPreviewBtn">👁️ پیش‌نمایش به چشم دانش‌آموز</button>
                 <button type="button" class="secondary-btn" onclick="closeModal()">انصراف</button>
             </div>
         </form>
@@ -1264,6 +1277,719 @@ function openQuestionForm(existing) {
         closeModal();
         renderQuestions();
     });
+
+    document.getElementById("qPreviewBtn").addEventListener("click", () => previewCurrentQuestion(isEdit, existing));
+}
+
+/* =========================================================
+   "پیش‌نمایش به چشم دانش‌آموز" -- shows the question, live from
+   whatever is currently typed in the (still-open, unsaved) form
+   above, exactly the way a student would see and answer it in
+   تمرین/آزمون/تکلیف. Nothing here ever hits the server or gets
+   saved -- grading is simulated locally against the answer key
+   values sitting in the form fields. Reuses the same visual
+   pattern as the student's renderPracticeQuestion so it's a
+   faithful preview, not just a rough approximation.
+========================================================= */
+let __previewQuestion = null;
+
+function previewCurrentQuestion(isEdit, existing) {
+    const form = document.getElementById("questionForm");
+    const fd = new FormData(form);
+    const type = isEdit ? existing.type : fd.get("type");
+    const q = {
+        type,
+        text: (fd.get("text") || "").trim(),
+        chapter: fd.get("chapter") || "",
+        explanation: fd.get("explanation") || "",
+    };
+
+    if (type === "multiple_choice") {
+        const texts = fd.getAll("opt_text");
+        const correctIdx = Number(fd.get("correct_idx"));
+        q.options = texts.map((t, i) => ({ text: (t || "").trim() || `گزینه ${i + 1}`, is_correct: i === correctIdx }));
+        if (q.options.filter(o => o.text).length < 2) { toast("حداقل ۲ گزینه پر کن", true); return; }
+    } else if (type === "true_false") {
+        q.correct_boolean = fd.get("correct_boolean") === "true";
+    } else if (type === "numeric") {
+        q.correct_numeric = Number(fd.get("correct_numeric"));
+        q.numeric_tolerance = Number(fd.get("numeric_tolerance") || 0);
+        if (Number.isNaN(q.correct_numeric)) { toast("پاسخ صحیح عددی رو وارد کن", true); return; }
+    } else if (type === "fill_blank") {
+        q.correct_text = fd.get("correct_text") || "";
+        q.grading_mode = fd.get("grading_mode");
+    } else if (type === "short_answer" || type === "long_answer") {
+        q.correct_text = fd.get("correct_text") || "";
+    } else if (type === "custom_html") {
+        q.custom_html = fd.get("custom_html") || "";
+        if (!q.custom_html.trim()) { toast("اول کد HTML رو وارد کن", true); return; }
+    }
+
+    if (!q.text && type !== "custom_html") { toast("اول متن سؤال رو بنویس", true); return; }
+
+    __previewQuestion = q;
+    renderQuestionPreview(q);
+}
+
+function renderQuestionPreview(q) {
+    const label = practiceTypeLabelTeacher(q.type);
+    openPreviewModal("پیش‌نمایش به چشم دانش‌آموز", `
+        <div class="page-subtitle" style="margin-bottom:10px;background:var(--surface2);border-radius:8px;padding:8px 10px">
+            این دقیقاً همون چیزیه که دانش‌آموز می‌بینه. هر پاسخی که اینجا بدی فقط برای خودته و جایی ذخیره نمی‌شه.
+        </div>
+        <div class="module" style="padding:14px">
+            <div><b>${q.type === "custom_html" ? "(محتوای HTML زیر رو ببین)" : escapeHtml(q.text)}</b><div class="page-subtitle" style="margin-top:2px">${label}${q.chapter ? " · " + escapeHtml(q.chapter) : ""}</div></div>
+            <div style="margin-top:10px">${previewQuestionInput(q)}</div>
+            <div style="margin-top:10px">
+                ${q.type === "custom_html"
+                    ? `<button class="primary-btn" id="pvCheckBtn" disabled onclick="checkPreviewAnswer()">ثبت</button>`
+                    : `<button class="primary-btn" onclick="checkPreviewAnswer()">بررسی پاسخ</button>`}
+            </div>
+            <div id="pvResult" style="margin-top:8px"></div>
+        </div>
+    `);
+
+    if (q.type === "custom_html") {
+        const iframe = document.getElementById("pvFrame");
+        iframe.srcdoc = q.custom_html || "";
+        const listener = (event) => {
+            if (event.source !== iframe.contentWindow) return;
+            if (!event.data || event.data.type !== "homeworkAnswer") return;
+            document.getElementById("pvStatus").textContent = `نتیجه دریافت‌شده از کد: ${event.data.value}`;
+            const btn = document.getElementById("pvCheckBtn");
+            if (btn) btn.disabled = false;
+            __previewQuestion.__htmlResult = event.data.value;
+        };
+        window.addEventListener("message", listener);
+        window.__onPreviewModalClose = () => window.removeEventListener("message", listener);
+    }
+}
+
+function practiceTypeLabelTeacher(t) {
+    return { multiple_choice: "چندگزینه‌ای", true_false: "درست/غلط", numeric: "عددی", short_answer: "پاسخ کوتاه", long_answer: "تشریحی", fill_blank: "جای‌خالی", custom_html: "HTML تعاملی" }[t] || t;
+}
+
+function previewQuestionInput(q) {
+    if (q.type === "multiple_choice") {
+        return q.options.map((o, i) => `
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <input type="radio" name="pv_opt" value="${i}"> ${escapeHtml(o.text)}
+            </label>
+        `).join("");
+    }
+    if (q.type === "true_false") {
+        return `
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><input type="radio" name="pv_opt" value="true"> درست</label>
+            <label style="display:flex;align-items:center;gap:8px"><input type="radio" name="pv_opt" value="false"> غلط</label>
+        `;
+    }
+    if (q.type === "numeric") return `<input class="form-input" id="pvNumeric" type="number" step="any">`;
+    if (q.type === "fill_blank") return `<input class="form-input" id="pvText" type="text">`;
+    if (q.type === "custom_html") {
+        return `
+            <iframe id="pvFrame" sandbox="allow-scripts" style="width:100%;min-height:360px;border:2px solid var(--line);border-radius:14px;background:#fff;display:block"></iframe>
+            <div class="page-subtitle" id="pvStatus" style="margin-top:6px">هنوز نتیجه‌ای دریافت نشده — تمرین رو کامل کن.</div>
+        `;
+    }
+    return `<textarea class="form-input" id="pvText" rows="3" style="height:auto;padding:10px 12px"></textarea>`;
+}
+
+// Local, client-side grading simulation -- mirrors the same logic the
+// real /api/student/practice-submit endpoint applies server-side, just
+// run against the answer-key values still sitting in the open form
+// (nothing here is the real endpoint, so it never touches the DB).
+function checkPreviewAnswer() {
+    const q = __previewQuestion;
+    if (!q) return;
+    const box = document.getElementById("pvResult");
+    let isCorrect = null; // null = no auto-grading exists for this type/mode
+    let refLine = "";
+
+    if (q.type === "multiple_choice") {
+        const picked = document.querySelector('input[name="pv_opt"]:checked');
+        if (!picked) { toast("یک گزینه رو انتخاب کن", true); return; }
+        const opt = q.options[Number(picked.value)];
+        isCorrect = opt.is_correct ? 1 : 0;
+        const correctOpt = q.options.find(o => o.is_correct);
+        if (correctOpt) refLine = `<div style="margin-top:6px">پاسخ درست: ${escapeHtml(correctOpt.text)}</div>`;
+    } else if (q.type === "true_false") {
+        const picked = document.querySelector('input[name="pv_opt"]:checked');
+        if (!picked) { toast("یکی رو انتخاب کن", true); return; }
+        isCorrect = (picked.value === "true") === !!q.correct_boolean ? 1 : 0;
+        refLine = `<div style="margin-top:6px">پاسخ درست: ${q.correct_boolean ? "درست" : "غلط"}</div>`;
+    } else if (q.type === "numeric") {
+        const val = Number(document.getElementById("pvNumeric").value);
+        isCorrect = Math.abs(val - q.correct_numeric) <= (q.numeric_tolerance || 0) ? 1 : 0;
+        refLine = `<div style="margin-top:6px">پاسخ درست: ${q.correct_numeric}</div>`;
+    } else if (q.type === "fill_blank") {
+        const val = (document.getElementById("pvText").value || "").trim();
+        if (q.grading_mode === "manual") {
+            isCorrect = null;
+        } else {
+            const accepted = (q.correct_text || "").split(",").map(s => s.trim()).filter(Boolean);
+            isCorrect = accepted.includes(val) ? 1 : 0;
+        }
+        if (q.correct_text) refLine = `<div style="margin-top:6px">پاسخ نمونه: ${escapeHtml(q.correct_text.split(",")[0].trim())}</div>`;
+    } else if (q.type === "custom_html") {
+        refLine = `<div style="margin-top:6px">نتیجه‌ی گزارش‌شده از کد: ${escapeHtml(String(q.__htmlResult ?? ""))}</div>`;
+    }
+    // short_answer / long_answer: no auto-grading exists at all -- isCorrect stays null
+
+    const badge = isCorrect === 1 ? `<span class="status green">درست 🎉</span>`
+        : isCorrect === 0 ? `<span class="status red">نادرست</span>`
+        : `<span class="status orange">ثبت شد (تصحیح دستی)</span>`;
+
+    box.innerHTML = `
+        ${badge}
+        ${refLine}
+        ${q.explanation ? `<div style="margin-top:8px;font-size:13px;padding:8px;background:var(--bg-subtle,#f5f5f5);border-radius:8px">${escapeHtml(q.explanation)}</div>` : ""}
+    `;
+}
+
+/* =========================================================
+   FULL EXAM / ASSIGNMENT PREVIEW ("پیش‌نمایش آزمون/تکلیف") --
+   same no-server-call, nothing-saved philosophy as the single-question
+   preview above, but walking through an entire already-built آزمون یا
+   تکلیف end-to-end the way a student actually would, with a
+   simulated final score at the end for whatever's auto-gradable.
+========================================================= */
+
+// -- shared: interactive (match/drag_drop) sanitize + grade, ported from
+// functions/api/_shared/interactive.js so the SAME logic the real
+// server uses to grade a student is what scores this preview.
+function previewShuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+function previewSanitizeInteractive(type, payload) {
+    if (type === "match") {
+        return {
+            left_items: payload.pairs.map(p => ({ id: p.left_id, text: p.left_text })),
+            right_items: previewShuffle(payload.pairs.map(p => ({ id: p.right_id, text: p.right_text }))),
+        };
+    }
+    if (type === "drag_drop") {
+        return {
+            buckets: payload.buckets,
+            items: previewShuffle(payload.items.map(it => ({ id: it.item_id, text: it.text }))),
+        };
+    }
+    return null;
+}
+function previewGradeInteractive(type, payload, maxScore, answer) {
+    if (type === "match") {
+        const correctByLeft = Object.fromEntries(payload.pairs.map(p => [p.left_id, p.right_id]));
+        let correctCount = 0;
+        for (const m of answer.matches) if (correctByLeft[m.left_id] && correctByLeft[m.left_id] === m.right_id) correctCount++;
+        const total = payload.pairs.length;
+        return { score: Math.round((correctCount / total) * maxScore * 100) / 100, maxScore, correctCount, total };
+    }
+    if (type === "drag_drop") {
+        const correctByItem = Object.fromEntries(payload.items.map(it => [it.item_id, it.bucket_index]));
+        let correctCount = 0;
+        for (const p of answer.placements) if (correctByItem[p.item_id] !== undefined && correctByItem[p.item_id] === Number(p.bucket_index)) correctCount++;
+        const total = payload.items.length;
+        return { score: Math.round((correctCount / total) * maxScore * 100) / 100, maxScore, correctCount, total };
+    }
+    return null;
+}
+
+// -- shared: match/drag_drop builders for a SINGLE interactive instance
+// (single-type assignment preview -- only one on the page at a time) --
+function renderPreviewMatchBuilder(interactive) {
+    return `
+        <div class="page-subtitle" style="margin-bottom:10px">یک مورد از ستون راست را انتخاب کن، بعد جفتش را از ستون چپ بزن.</div>
+        <div style="display:flex;gap:16px">
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                ${interactive.left_items.map(li => `<button type="button" class="secondary-btn preview-match-left-btn" data-id="${li.id}">${escapeHtml(li.text)}</button>`).join("")}
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                ${interactive.right_items.map(ri => `<button type="button" class="secondary-btn preview-match-right-btn" data-id="${ri.id}">${escapeHtml(ri.text)}</button>`).join("")}
+            </div>
+        </div>`;
+}
+let __previewMatchSelections = {};
+function initPreviewMatchBuilder() {
+    __previewMatchSelections = {};
+    let selectedRight = null;
+    const rightBtns = document.querySelectorAll(".preview-match-right-btn");
+    const leftBtns = document.querySelectorAll(".preview-match-left-btn");
+    rightBtns.forEach(btn => btn.addEventListener("click", () => {
+        rightBtns.forEach(b => b.style.outline = "");
+        selectedRight = btn.dataset.id;
+        btn.style.outline = "2px solid var(--primary)";
+    }));
+    leftBtns.forEach(btn => btn.addEventListener("click", () => {
+        if (!selectedRight) { toast("اول یکی از ستون راست را انتخاب کن", true); return; }
+        __previewMatchSelections[btn.dataset.id] = selectedRight;
+        btn.style.background = "var(--primary-soft)";
+        btn.textContent = btn.textContent.replace(/ ✓$/, "") + " ✓";
+        rightBtns.forEach(b => b.style.outline = "");
+        selectedRight = null;
+    }));
+}
+function collectPreviewMatchAnswer(interactive) {
+    const matches = Object.entries(__previewMatchSelections).map(([left_id, right_id]) => ({ left_id, right_id }));
+    if (matches.length < interactive.left_items.length) return null;
+    return { matches };
+}
+function renderPreviewDragDropBuilder(interactive) {
+    return `
+        <div class="page-subtitle" style="margin-bottom:10px">برای هر آیتم، دسته‌ی درست را انتخاب کن.</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+            ${interactive.items.map(it => `
+                <div style="display:flex;align-items:center;gap:10px">
+                    <div style="flex:1">${escapeHtml(it.text)}</div>
+                    <select class="form-input preview-dd-bucket-select" data-item-id="${it.id}" style="max-width:160px">
+                        <option value="">— انتخاب کن —</option>
+                        ${interactive.buckets.map((b, i) => `<option value="${i}">${escapeHtml(b)}</option>`).join("")}
+                    </select>
+                </div>
+            `).join("")}
+        </div>`;
+}
+function collectPreviewDragDropAnswer(interactive) {
+    const selects = document.querySelectorAll(".preview-dd-bucket-select");
+    const placements = [];
+    for (const sel of selects) {
+        if (sel.value === "") return null;
+        placements.push({ item_id: sel.dataset.itemId, bucket_index: Number(sel.value) });
+    }
+    return { placements };
+}
+
+// -- shared: file/draw/audio widgets, parameterized by element id so both
+// the single-type preview and the per-question multi-question preview can
+// reuse the same code without colliding with each other's DOM ids --
+function previewFileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+function previewBlobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+let __previewDrawCtx = {};
+function initPreviewDrawCanvas(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    const ctx = canvas.getContext("2d");
+    __previewDrawCtx[canvasId] = ctx;
+    ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.strokeStyle = "#172033";
+    let drawing = false;
+    const pos = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+        const t = e.touches ? e.touches[0] : e;
+        return { x: (t.clientX - rect.left) * scaleX, y: (t.clientY - rect.top) * scaleY };
+    };
+    const start = (e) => { e.preventDefault(); drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+    const move = (e) => { if (!drawing) return; e.preventDefault(); const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); };
+    const end = () => { drawing = false; };
+    canvas.addEventListener("mousedown", start);
+    canvas.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", end);
+    canvas.addEventListener("touchstart", start);
+    canvas.addEventListener("touchmove", move);
+    canvas.addEventListener("touchend", end);
+}
+function clearPreviewDrawCanvas(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    __previewDrawCtx[canvasId].clearRect(0, 0, canvas.width, canvas.height);
+}
+let __previewRecorders = {};
+async function togglePreviewRecording(key, btnId, previewBoxId) {
+    const btn = document.getElementById(btnId);
+    const existing = __previewRecorders[key];
+    if (existing && existing.state === "recording") { existing.stop(); return; }
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const chunks = [];
+        const mediaRecorder = new MediaRecorder(stream);
+        __previewRecorders[key] = mediaRecorder;
+        mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+        mediaRecorder.onstop = async () => {
+            const blob = new Blob(chunks, { type: "audio/webm" });
+            const dataUrl = await previewBlobToDataUrl(blob);
+            document.getElementById(previewBoxId).innerHTML = `<audio controls src="${dataUrl}" style="width:100%"></audio>`;
+            stream.getTracks().forEach(t => t.stop());
+            btn.textContent = "🎙️ ضبط دوباره";
+        };
+        mediaRecorder.start();
+        btn.textContent = "⏹️ توقف ضبط";
+        setTimeout(() => { if (mediaRecorder.state === "recording") mediaRecorder.stop(); }, 15000);
+    } catch (e) {
+        toast("دسترسی به میکروفون ممکن نشد", true);
+    }
+}
+
+/* ---- exam preview: walk every question in the exam at once ---- */
+let __examPreview = null;
+
+async function previewExam(examId) {
+    const attached = await api.get(`/api/teacher/exam-questions?exam_id=${examId}`);
+    if (!attached.length) { toast("این آزمون هنوز سؤالی ندارد", true); return; }
+    const full = await api.get(`/api/teacher/questions?ids=${attached.map(a => a.question_id).join(",")}`);
+    const byId = new Map(full.map(q => [q.id, q]));
+    const questions = [...attached].sort((a, b) => a.position - b.position)
+        .map(a => byId.has(a.question_id) ? { ...byId.get(a.question_id), score: a.score } : null)
+        .filter(Boolean);
+    if (!questions.length) { toast("سؤالات این آزمون پیدا نشد", true); return; }
+
+    __examPreview = { questions, results: {} };
+    const cleanups = [];
+    openPreviewModal("پیش‌نمایش آزمون به چشم دانش‌آموز", `
+        <div class="page-subtitle" style="margin-bottom:10px;background:var(--surface2);border-radius:8px;padding:8px 10px">
+            این دقیقاً همون چیزیه که دانش‌آموز موقع دادن آزمون می‌بینه. پاسخ‌هایی که این‌جا بدی جایی ذخیره نمی‌شن.
+        </div>
+        ${questions.map((q, i) => `
+            <div class="card" style="margin-bottom:14px">
+                <div class="page-subtitle" style="margin-bottom:8px">سؤال ${i + 1} از ${questions.length} — ${q.score} نمره</div>
+                <div><b>${q.type === "custom_html" ? "(محتوای HTML زیر رو ببین)" : escapeHtml(q.text)}</b></div>
+                <div style="margin-top:8px">${examPreviewQuestionInput(q, i)}</div>
+                <div style="margin-top:8px">
+                    ${q.type === "custom_html"
+                        ? `<button class="secondary-btn" id="epCheckBtn_${i}" disabled onclick="checkExamPreviewAnswer(${i})">ثبت</button>`
+                        : `<button class="secondary-btn" onclick="checkExamPreviewAnswer(${i})">بررسی پاسخ</button>`}
+                </div>
+                <div id="epResult_${i}" style="margin-top:6px"></div>
+            </div>
+        `).join("")}
+        <div class="modal-footer">
+            <button class="primary-btn" onclick="finishExamPreview()">پایان پیش‌نمایش — دیدن نمره‌ی کل</button>
+        </div>
+    `);
+
+    questions.forEach((q, i) => {
+        if (q.type !== "custom_html") return;
+        const iframe = document.getElementById(`epFrame_${i}`);
+        iframe.srcdoc = q.custom_html || "";
+        const listener = (event) => {
+            if (event.source !== iframe.contentWindow) return;
+            if (!event.data || event.data.type !== "homeworkAnswer") return;
+            document.getElementById(`epStatus_${i}`).textContent = `نتیجه دریافت‌شده از کد: ${event.data.value}`;
+            const btn = document.getElementById(`epCheckBtn_${i}`);
+            if (btn) btn.disabled = false;
+            q.__htmlResult = event.data.value;
+        };
+        window.addEventListener("message", listener);
+        cleanups.push(() => window.removeEventListener("message", listener));
+    });
+    window.__onPreviewModalClose = () => cleanups.forEach(fn => fn());
+}
+
+function examPreviewQuestionInput(q, i) {
+    if (q.type === "multiple_choice") {
+        return (q.options || []).map((o, oi) => `
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <input type="radio" name="ep_opt_${i}" value="${oi}"> ${escapeHtml(o.text)}
+            </label>`).join("");
+    }
+    if (q.type === "true_false") {
+        return `
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><input type="radio" name="ep_opt_${i}" value="true"> درست</label>
+            <label style="display:flex;align-items:center;gap:8px"><input type="radio" name="ep_opt_${i}" value="false"> غلط</label>`;
+    }
+    if (q.type === "numeric") return `<input class="form-input" id="epNumeric_${i}" type="number" step="any">`;
+    if (q.type === "fill_blank") return `<input class="form-input" id="epText_${i}" type="text">`;
+    if (q.type === "custom_html") {
+        return `
+            <iframe id="epFrame_${i}" sandbox="allow-scripts" style="width:100%;min-height:320px;border:2px solid var(--line);border-radius:14px;background:#fff;display:block"></iframe>
+            <div class="page-subtitle" id="epStatus_${i}" style="margin-top:6px">هنوز نتیجه‌ای دریافت نشده.</div>`;
+    }
+    return `<textarea class="form-input" id="epText_${i}" rows="2" style="height:auto;padding:10px 12px"></textarea>`;
+}
+
+function checkExamPreviewAnswer(i) {
+    const q = __examPreview.questions[i];
+    const box = document.getElementById(`epResult_${i}`);
+    let isCorrect = null;
+    let refLine = "";
+
+    if (q.type === "multiple_choice") {
+        const picked = document.querySelector(`input[name="ep_opt_${i}"]:checked`);
+        if (!picked) { toast("یک گزینه رو انتخاب کن", true); return; }
+        const opt = q.options[Number(picked.value)];
+        isCorrect = opt.is_correct ? 1 : 0;
+        const correctOpt = q.options.find(o => o.is_correct);
+        if (correctOpt) refLine = `<div style="margin-top:4px">پاسخ درست: ${escapeHtml(correctOpt.text)}</div>`;
+    } else if (q.type === "true_false") {
+        const picked = document.querySelector(`input[name="ep_opt_${i}"]:checked`);
+        if (!picked) { toast("یکی رو انتخاب کن", true); return; }
+        isCorrect = (picked.value === "true") === !!q.correct_boolean ? 1 : 0;
+        refLine = `<div style="margin-top:4px">پاسخ درست: ${q.correct_boolean ? "درست" : "غلط"}</div>`;
+    } else if (q.type === "numeric") {
+        const val = Number(document.getElementById(`epNumeric_${i}`).value);
+        isCorrect = Math.abs(val - q.correct_numeric) <= (q.numeric_tolerance || 0) ? 1 : 0;
+        refLine = `<div style="margin-top:4px">پاسخ درست: ${q.correct_numeric}</div>`;
+    } else if (q.type === "fill_blank") {
+        const val = (document.getElementById(`epText_${i}`).value || "").trim();
+        if (q.grading_mode === "manual") { isCorrect = null; }
+        else {
+            const accepted = (q.correct_text || "").split(",").map(s => s.trim()).filter(Boolean);
+            isCorrect = accepted.includes(val) ? 1 : 0;
+        }
+    } else if (q.type === "custom_html") {
+        refLine = `<div style="margin-top:4px">نتیجه‌ی گزارش‌شده از کد: ${escapeHtml(String(q.__htmlResult ?? ""))}</div>`;
+    }
+
+    __examPreview.results[i] = isCorrect;
+    const badge = isCorrect === 1 ? `<span class="status green">درست</span>` : isCorrect === 0 ? `<span class="status red">نادرست</span>` : `<span class="status orange">ثبت شد (دستی)</span>`;
+    box.innerHTML = `${badge}${refLine}`;
+}
+
+function finishExamPreview() {
+    const { questions, results } = __examPreview;
+    let earned = 0, autoMax = 0, manualCount = 0;
+    questions.forEach((q, i) => {
+        const autoGraded = ["multiple_choice", "true_false", "numeric"].includes(q.type) || (q.type === "fill_blank" && q.grading_mode !== "manual");
+        if (!autoGraded) { manualCount++; return; }
+        autoMax += q.score;
+        if (results[i] === 1) earned += q.score;
+    });
+    toast(`نمره‌ی خودکارِ شبیه‌سازی‌شده: ${earned} از ${autoMax}${manualCount ? ` (+ ${manualCount} سؤال با تصحیح دستی)` : ""}`);
+}
+
+/* ---- assignment preview: single-type, or multi-question ---- */
+let __previewAssignmentInteractive = null;
+let __mqPreview = null;
+
+async function previewAssignment(assignmentId) {
+    const list = cache.assignments || await api.get("/api/teacher/assignments");
+    const a = list.find(x => x.id === assignmentId);
+    if (!a) { toast("تکلیف پیدا نشد", true); return; }
+    if (a.is_multi_question) {
+        const questions = await api.get(`/api/teacher/assignment-questions?assignment_id=${assignmentId}`);
+        if (!questions.length) { toast("این تکلیف هنوز سؤالی ندارد", true); return; }
+        renderMultiAssignmentPreview(a, questions);
+    } else {
+        renderSingleAssignmentPreview(a);
+    }
+}
+
+function renderSingleAssignmentPreview(a) {
+    let payload = null, interactive = null, widgetHtml = "";
+    const isAuto = a.submission_type === "match" || a.submission_type === "drag_drop";
+
+    if (isAuto) {
+        payload = JSON.parse(a.question_payload);
+        interactive = previewSanitizeInteractive(a.submission_type, payload);
+        widgetHtml = a.submission_type === "match" ? renderPreviewMatchBuilder(interactive) : renderPreviewDragDropBuilder(interactive);
+    } else if (a.submission_type === "text") {
+        widgetHtml = `<div class="form-group"><textarea class="form-input" id="pvAsgText" rows="5" style="height:auto;padding:10px 12px" placeholder="پاسخ خود را بنویس..."></textarea></div>`;
+    } else if (a.submission_type === "photo") {
+        widgetHtml = `<div class="form-group"><input class="form-input" id="pvAsgPhoto" type="file" accept="image/*" capture="environment"></div><div id="pvAsgPhotoPreview"></div>`;
+    } else if (a.submission_type === "audio") {
+        widgetHtml = `<div class="form-group"><button type="button" class="secondary-btn" id="pvAsgRecordBtn" onclick="togglePreviewRecording('single','pvAsgRecordBtn','pvAsgAudioPreview')">🎙️ شروع ضبط</button><div id="pvAsgAudioPreview" style="margin-top:10px"></div></div>`;
+    } else if (a.submission_type === "draw") {
+        widgetHtml = `<div class="form-group">
+            <canvas id="pvAsgCanvas" width="320" height="240" style="border:1px solid var(--line);border-radius:8px;width:100%;max-width:320px;touch-action:none;background:#fff"></canvas><br>
+            <button type="button" class="secondary-btn" onclick="clearPreviewDrawCanvas('pvAsgCanvas')" style="margin-top:8px">پاک کردن</button>
+        </div>`;
+    }
+
+    openPreviewModal(a.title, `
+        <div class="page-subtitle" style="margin-bottom:10px;background:var(--surface2);border-radius:8px;padding:8px 10px">
+            این دقیقاً همون چیزیه که دانش‌آموز موقع ارسال این تکلیف می‌بینه. چیزی این‌جا ذخیره یا ارسال نمی‌شه.
+        </div>
+        ${a.description ? `<div class="page-subtitle" style="margin-bottom:14px">${escapeHtml(a.description)}</div>` : ""}
+        ${widgetHtml}
+        <div class="modal-footer">
+            <button class="primary-btn" onclick="${isAuto ? "checkPreviewAssignmentInteractive()" : "finishManualAssignmentPreview()"}">${isAuto ? "بررسی پاسخ" : "ثبت"}</button>
+        </div>
+        <div id="pvAsgResult" style="margin-top:8px"></div>
+    `);
+
+    if (a.submission_type === "match") initPreviewMatchBuilder();
+    if (a.submission_type === "draw") initPreviewDrawCanvas("pvAsgCanvas");
+    if (a.submission_type === "photo") {
+        document.getElementById("pvAsgPhoto").addEventListener("change", async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const dataUrl = await previewFileToDataUrl(file);
+            document.getElementById("pvAsgPhotoPreview").innerHTML = `<img src="${dataUrl}" style="max-width:200px;border-radius:8px;margin-top:8px">`;
+        });
+    }
+
+    __previewAssignmentInteractive = isAuto ? { type: a.submission_type, payload, maxScore: a.max_score, interactive } : null;
+}
+
+function checkPreviewAssignmentInteractive() {
+    const { type, payload, maxScore, interactive } = __previewAssignmentInteractive;
+    const answer = type === "match" ? collectPreviewMatchAnswer(interactive) : collectPreviewDragDropAnswer(interactive);
+    if (!answer) { toast(type === "match" ? "لطفاً همه‌ی موارد را تطبیق بده" : "لطفاً برای همه‌ی آیتم‌ها یک دسته انتخاب کن", true); return; }
+    const result = previewGradeInteractive(type, payload, maxScore, answer);
+    document.getElementById("pvAsgResult").innerHTML = `<span class="status ${result.correctCount === result.total ? "green" : "orange"}">نمره‌ی شبیه‌سازی‌شده: ${result.score} از ${result.maxScore} (${result.correctCount} از ${result.total} درست)</span>`;
+}
+
+function finishManualAssignmentPreview() {
+    document.getElementById("pvAsgResult").innerHTML = `<span class="status orange">ثبت شد (تصحیح دستی) — دانش‌آموز همین‌جا فقط پاسخ رو می‌فرسته، معلم بعداً نمره می‌ده.</span>`;
+}
+
+// -- multi-question assignment preview: one card per sub-question, each
+// possibly a different submission_type, same per-id-scoped pattern as the
+// student side's own renderMqQuestion (needed here too since several match/
+// draw/audio widgets can be on the page at the same time) --
+function renderMultiAssignmentPreview(a, questions) {
+    __mqPreview = { answers: {}, interactives: {} };
+    openPreviewModal(a.title, `
+        <div class="page-subtitle" style="margin-bottom:10px;background:var(--surface2);border-radius:8px;padding:8px 10px">
+            این دقیقاً همون چیزیه که دانش‌آموز موقع ارسال این تکلیف می‌بینه. چیزی این‌جا ذخیره یا ارسال نمی‌شه.
+        </div>
+        ${a.description ? `<div class="page-subtitle" style="margin-bottom:14px">${escapeHtml(a.description)}</div>` : ""}
+        ${questions.map((q, i) => renderMqpQuestion(q, i, questions.length)).join("")}
+        <div class="modal-footer"><button class="primary-btn" onclick="finishMqpPreview()">پایان پیش‌نمایش — دیدن نتیجه‌ی سؤالات خودکار</button></div>
+    `);
+
+    questions.forEach(q => {
+        const frameBox = document.getElementById(`mqpFrame_${q.id}`);
+        mountPromptFrame(frameBox, a.prompt_style, q.prompt_html);
+        if (q.submission_type === "draw") initPreviewDrawCanvas(`mqpCanvas_${q.id}`);
+        if (q.submission_type === "photo") {
+            document.getElementById(`mqpPhoto_${q.id}`).addEventListener("change", async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const dataUrl = await previewFileToDataUrl(file);
+                document.getElementById(`mqpPhotoPreview_${q.id}`).innerHTML = `<img src="${dataUrl}" style="max-width:200px;border-radius:8px;margin-top:8px">`;
+            });
+        }
+        if (q.submission_type === "match" || q.submission_type === "drag_drop") {
+            const payload = JSON.parse(q.question_payload);
+            const interactive = previewSanitizeInteractive(q.submission_type, payload);
+            __mqPreview.interactives[q.id] = { type: q.submission_type, payload, interactive };
+            document.getElementById(`mqpInteractive_${q.id}`).innerHTML =
+                q.submission_type === "match" ? renderPreviewMqMatchBuilder(q.id, interactive) : renderPreviewMqDragDropBuilder(q.id, interactive);
+            if (q.submission_type === "match") initPreviewMqMatchBuilder(q.id);
+        }
+    });
+}
+
+function renderMqpQuestion(q, idx, total) {
+    let answerHtml = "";
+    const isAuto = q.submission_type === "match" || q.submission_type === "drag_drop";
+    if (q.submission_type === "text") {
+        answerHtml = `<div class="form-group"><textarea class="form-input" id="mqpText_${q.id}" rows="3" style="height:auto;padding:10px 12px" placeholder="پاسخ خود را بنویس..."></textarea></div>`;
+    } else if (q.submission_type === "photo") {
+        answerHtml = `<div class="form-group"><input class="form-input" id="mqpPhoto_${q.id}" type="file" accept="image/*" capture="environment"></div><div id="mqpPhotoPreview_${q.id}"></div>`;
+    } else if (q.submission_type === "audio") {
+        answerHtml = `<div class="form-group"><button type="button" class="secondary-btn" id="mqpAudioBtn_${q.id}" onclick="togglePreviewRecording('mqp_${q.id}','mqpAudioBtn_${q.id}','mqpAudioPreview_${q.id}')">🎙️ شروع ضبط</button><div id="mqpAudioPreview_${q.id}" style="margin-top:10px"></div></div>`;
+    } else if (q.submission_type === "draw") {
+        answerHtml = `<div class="form-group">
+            <canvas id="mqpCanvas_${q.id}" width="320" height="240" style="border:1px solid var(--line);border-radius:8px;width:100%;max-width:320px;touch-action:none;background:#fff"></canvas><br>
+            <button type="button" class="secondary-btn" onclick="clearPreviewDrawCanvas('mqpCanvas_${q.id}')" style="margin-top:8px">پاک کردن</button>
+        </div>`;
+    } else if (isAuto) {
+        answerHtml = `<div id="mqpInteractive_${q.id}"></div>`;
+    }
+
+    return `
+        <div class="card" style="margin-bottom:14px">
+            <div class="page-subtitle" style="margin-bottom:8px">سؤال ${idx + 1} از ${total}</div>
+            <div id="mqpFrame_${q.id}" style="margin-bottom:8px"></div>
+            ${q.prompt_text ? `<div class="page-subtitle" style="margin-bottom:8px">${escapeHtml(q.prompt_text)}</div>` : ""}
+            ${answerHtml}
+            ${isAuto ? `<div style="margin-top:8px"><button class="secondary-btn" onclick="checkMqpAnswer(${q.id})">بررسی پاسخ</button></div>` : ""}
+            <div id="mqpResult_${q.id}" style="margin-top:6px"></div>
+        </div>`;
+}
+
+function renderPreviewMqMatchBuilder(qid, interactive) {
+    return `
+        <div class="page-subtitle" style="margin-bottom:10px">یک مورد از ستون راست را انتخاب کن، بعد جفتش را از ستون چپ بزن.</div>
+        <div style="display:flex;gap:16px">
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                ${interactive.left_items.map(li => `<button type="button" class="secondary-btn mqp-match-left-btn" data-qid="${qid}" data-id="${li.id}">${escapeHtml(li.text)}</button>`).join("")}
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                ${interactive.right_items.map(ri => `<button type="button" class="secondary-btn mqp-match-right-btn" data-qid="${qid}" data-id="${ri.id}">${escapeHtml(ri.text)}</button>`).join("")}
+            </div>
+        </div>`;
+}
+let __mqPreviewMatchState = {};
+function initPreviewMqMatchBuilder(qid) {
+    __mqPreviewMatchState[qid] = { selectedRight: null, selections: {} };
+    const state = __mqPreviewMatchState[qid];
+    const rightBtns = document.querySelectorAll(`.mqp-match-right-btn[data-qid="${qid}"]`);
+    const leftBtns = document.querySelectorAll(`.mqp-match-left-btn[data-qid="${qid}"]`);
+    rightBtns.forEach(btn => btn.addEventListener("click", () => {
+        rightBtns.forEach(b => b.style.outline = "");
+        state.selectedRight = btn.dataset.id;
+        btn.style.outline = "2px solid var(--primary)";
+    }));
+    leftBtns.forEach(btn => btn.addEventListener("click", () => {
+        if (!state.selectedRight) { toast("اول یکی از ستون راست را انتخاب کن", true); return; }
+        state.selections[btn.dataset.id] = state.selectedRight;
+        btn.style.background = "var(--primary-soft)";
+        btn.textContent = btn.textContent.replace(/ ✓$/, "") + " ✓";
+        rightBtns.forEach(b => b.style.outline = "");
+        state.selectedRight = null;
+    }));
+}
+function collectPreviewMqMatchAnswer(qid, interactive) {
+    const state = __mqPreviewMatchState[qid];
+    if (!state) return null;
+    const matches = Object.entries(state.selections).map(([left_id, right_id]) => ({ left_id, right_id }));
+    if (matches.length < interactive.left_items.length) return null;
+    return { matches };
+}
+function renderPreviewMqDragDropBuilder(qid, interactive) {
+    return `
+        <div class="page-subtitle" style="margin-bottom:10px">برای هر آیتم، دسته‌ی درست را انتخاب کن.</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+            ${interactive.items.map(it => `
+                <div style="display:flex;align-items:center;gap:10px">
+                    <div style="flex:1">${escapeHtml(it.text)}</div>
+                    <select class="form-input mqp-dd-bucket-select" data-qid="${qid}" data-item-id="${it.id}" style="max-width:160px">
+                        <option value="">— انتخاب کن —</option>
+                        ${interactive.buckets.map((b, i) => `<option value="${i}">${escapeHtml(b)}</option>`).join("")}
+                    </select>
+                </div>
+            `).join("")}
+        </div>`;
+}
+function collectPreviewMqDragDropAnswer(qid) {
+    const selects = document.querySelectorAll(`.mqp-dd-bucket-select[data-qid="${qid}"]`);
+    const placements = [];
+    for (const sel of selects) {
+        if (sel.value === "") return null;
+        placements.push({ item_id: sel.dataset.itemId, bucket_index: Number(sel.value) });
+    }
+    return { placements };
+}
+function checkMqpAnswer(qid) {
+    const info = __mqPreview.interactives[qid];
+    if (!info) return;
+    const answer = info.type === "match" ? collectPreviewMqMatchAnswer(qid, info.interactive) : collectPreviewMqDragDropAnswer(qid);
+    if (!answer) { toast(info.type === "match" ? "لطفاً همه‌ی موارد را تطبیق بده" : "لطفاً برای همه‌ی آیتم‌ها یک دسته انتخاب کن", true); return; }
+    const result = previewGradeInteractive(info.type, info.payload, 1, answer);
+    __mqPreview.answers[qid] = result;
+    document.getElementById(`mqpResult_${qid}`).innerHTML = `<span class="status ${result.correctCount === result.total ? "green" : "orange"}">${result.correctCount} از ${result.total} درست</span>`;
+}
+function finishMqpPreview() {
+    const ids = Object.keys(__mqPreview.interactives).map(Number);
+    if (!ids.length) { toast("این تکلیف سؤال خودکارتصحیح‌شونده‌ای ندارد — بقیه‌ی سؤال‌ها دستی تصحیح می‌شوند", true); return; }
+    let totalRatio = 0, checkedCount = 0;
+    ids.forEach(qid => {
+        const r = __mqPreview.answers[qid];
+        if (r) { totalRatio += r.correctCount / r.total; checkedCount++; }
+    });
+    if (!checkedCount) { toast("حداقل یکی از سؤال‌های خودکار رو بررسی کن", true); return; }
+    // simplified aggregate: an unweighted average across the auto-graded sub-
+    // questions that were actually checked -- the real server-side score also
+    // factors in each question's `weight` and the manually-graded ones, which
+    // this preview intentionally doesn't try to simulate.
+    toast(`میانگین درصد سؤال‌های خودکارِ بررسی‌شده: ${Math.round((totalRatio / checkedCount) * 100)}٪`);
 }
 
 function onQuestionTypeChange(existing) {

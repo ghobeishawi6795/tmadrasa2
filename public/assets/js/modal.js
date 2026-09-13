@@ -68,3 +68,29 @@ function resolveModalPrompt(value) {
     closeModal();
     if (resolve) resolve(value);
 }
+
+/* =========================================================
+   Second, stacked overlay ("previewModalOverlay") used for things like
+   the teacher's "پیش‌نمایش به چشم دانش‌آموز" question preview — kept
+   separate from the main modal so opening a preview on top of an
+   open form doesn't wipe out (and lose) whatever the teacher already
+   typed into that form underneath.
+   Host pages that want this must include a previewModalOverlay/
+   previewModalTitle/previewModalContent block (see teacher/index.html).
+   If a caller needs to clean something up when the preview closes
+   (e.g. remove a postMessage listener), set window.__onPreviewModalClose
+   to a function before opening it.
+========================================================= */
+
+function openPreviewModal(title, html) {
+    document.getElementById("previewModalTitle").textContent = title;
+    document.getElementById("previewModalContent").innerHTML = html;
+    document.getElementById("previewModalOverlay").classList.add("show");
+}
+
+function closePreviewModal(event) {
+    if (event && event.target && event.target.id !== "previewModalOverlay" && event.type === "click") return;
+    document.getElementById("previewModalOverlay").classList.remove("show");
+    document.getElementById("previewModalContent").innerHTML = "";
+    if (window.__onPreviewModalClose) { const fn = window.__onPreviewModalClose; window.__onPreviewModalClose = null; fn(); }
+}
