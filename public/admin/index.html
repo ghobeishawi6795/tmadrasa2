@@ -515,7 +515,7 @@ async function renderSubjects() {
                 <thead><tr><th>نام درس</th><th>پایه</th><th></th></tr></thead>
                 <tbody>
                     ${subjects.map(s => `
-                        <tr><td>${escapeHtml(s.name)}</td><td>${escapeHtml(s.grade || "—")}</td><td><button class="secondary-btn" onclick="deleteSubject(${s.id})">حذف</button></td></tr>
+                        <tr><td>${escapeHtml(s.name)}</td><td>${escapeHtml(s.grade || "—")}</td><td><button class="secondary-btn" onclick="renameSubject(${s.id})">ویرایش نام</button> <button class="secondary-btn" onclick="deleteSubject(${s.id})">حذف</button></td></tr>
                     `).join("") || `<tr><td colspan="3" style="text-align:center;color:var(--muted)">درسی ثبت نشده</td></tr>`}
                 </tbody>
             </table>
@@ -543,6 +543,14 @@ function openSubjectForm() {
         closeModal();
         renderSubjects();
     });
+}
+
+async function renameSubject(id) {
+    const subject = cache.subjects.find(s => s.id === id);
+    const name = prompt("نام جدید درس:", subject ? subject.name : "");
+    if (!name || !name.trim() || (subject && name.trim() === subject.name)) return;
+    await withToast(() => api.put("/api/admin/subjects", { id, name: name.trim() }), "نام درس بروزرسانی شد");
+    renderSubjects();
 }
 
 async function deleteSubject(id) {

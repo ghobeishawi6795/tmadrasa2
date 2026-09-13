@@ -234,7 +234,7 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
                 chapter = ?, topic = ?, explanation = ?, tags = ?, difficulty = ?, grading_mode = ?, custom_html = ?,
                 visibility = COALESCE(?, visibility)
           WHERE id = ?`,
-        body.text, body.subject_id ?? question.subject_id,
+        body.text, body.subject_id === undefined ? question.subject_id : (body.subject_id || null),
         type === "true_false" ? (body.correct_boolean ? 1 : 0) : null,
         type === "numeric" ? body.correct_numeric : null,
         type === "numeric" ? (body.numeric_tolerance || 0) : null,

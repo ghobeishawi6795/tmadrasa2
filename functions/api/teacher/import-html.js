@@ -65,13 +65,15 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
 
             const r = await db.run(
                 `INSERT INTO questions (school_id, teacher_id, subject_id, type, text,
-                                         correct_boolean, correct_numeric, numeric_tolerance, correct_text)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                         correct_boolean, correct_numeric, numeric_tolerance, correct_text,
+                                         import_html, import_style)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 user.school_id, teacher.id, subjectId, item.type, item.text,
                 item.type === "true_false" ? (item.correct_boolean ? 1 : 0) : null,
                 item.type === "numeric" ? item.correct_numeric : null,
                 item.type === "numeric" ? 0 : null,
-                (item.type === "short_answer" || item.type === "long_answer") ? (item.correct_text || null) : null
+                (item.type === "short_answer" || item.type === "long_answer") ? (item.correct_text || null) : null,
+                item.blockHtml || null, styleBlock || null
             );
             const questionId = r.meta.last_row_id;
 

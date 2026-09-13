@@ -37,6 +37,30 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     return created({ id: result.meta.last_row_id }, "درس ساخته شد");
 });
 
+export const onRequestPut = withErrorHandling(async ({ request, env }) => {
+    const { user } = await authenticate(request, env);
+    await requirePermission(env, user, "subjects.update");
+    const body = await readJson(request);
+    requireFields(body, ["id", "name"]);
+
+    const db = q(env);
+    const subject = await db.first(
+        `SELECT * FROM subjects WHERE id = ? AND school_id = ? AND deleted_at IS NULL`,
+        body.id, user.school_id
+    );
+    if (!subject) throw errors.notFound("درس پیدا نشد");
+
+    await db.run(`UPDATE subjects SET name = ? WHERE id = ?`, body.name, subject.id);
+
+    await writeAudit(env, {
+        schoolId: user.school_id, actorUserId: user.id, action: "subject.update",
+        entityType: "subject", entityId: subject.id,
+        meta: { old_name: subject.name, new_name: body.name }, request,
+    });
+
+    return ok(null, "نام درس بروزرسانی شد");
+});
+
 export const onRequestDelete = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "subjects.delete");

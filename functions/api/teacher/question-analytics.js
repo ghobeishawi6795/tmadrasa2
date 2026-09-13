@@ -1,6 +1,9 @@
 // GET /api/teacher/question-analytics?question_id=123
-// Scoped to the calling teacher's own exams (مدرسه has no shared/public
-// bank yet, unlike دبستان's school-wide view of this same feature).
+// Scoped to the calling teacher's own exams and own question. Unlike
+// find-similar-questions.js, this deliberately does NOT widen to the
+// public bank -- usage stats are about how a question performed in THIS
+// teacher's own exams, which stays true regardless of whether the
+// question later got shared publicly.
 import { q } from "../_shared/db.js";
 import { authenticate, requirePermission } from "../_shared/auth.js";
 import { getTeacherRecord } from "../_shared/ownership.js";

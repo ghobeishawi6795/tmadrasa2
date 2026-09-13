@@ -173,6 +173,11 @@ function parseOneItem({ attrs, inner, fullMatch }, index) {
         } else {
             return { ...base, error: `نوع «${type}» برای بانک آزمون معتبر نیست` };
         }
+        // Kept for the bank's teacher-only "exact original preview" (eye
+        // icon) -- safe to keep the raw block as-is (incl. the correct
+        // answer in data-correct/q-answer) since this never reaches a
+        // student, unlike the assignment-target match/drag_drop case above.
+        result.blockHtml = sanitizeDecorativeHtml(fullMatch);
         return result;
     }
 

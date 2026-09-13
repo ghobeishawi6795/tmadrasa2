@@ -1,4 +1,5 @@
 // /api/teacher/exam-questions -- attach/detach/reorder questions on a DRAFT exam
+// GET    -> list questions already attached to an exam { exam_id } (query string)
 // POST   -> attach a question { exam_id, question_id, position, score }
 // PUT    -> reorder/rescope { exam_id, items: [{question_id, position, score}] }
 // DELETE -> detach { exam_id, question_id }
@@ -8,6 +9,28 @@ import { getTeacherRecord, loadExamOwnedByTeacher, loadQuestionOwnedByTeacher } 
 import { ok, errors } from "../_shared/response.js";
 import { requireFields, readJson, withErrorHandling } from "../_shared/validate.js";
 import { ensureVersionSnapshot } from "../_shared/question-versions.js";
+
+export const onRequestGet = withErrorHandling(async ({ request, env }) => {
+    const { user } = await authenticate(request, env);
+    await requirePermission(env, user, "exams.view");
+    const teacher = await getTeacherRecord(env, user.id);
+
+    const url = new URL(request.url);
+    const examId = url.searchParams.get("exam_id");
+    if (!examId) throw errors.validation("exam_id لازم است");
+    const exam = await loadExamOwnedByTeacher(env, examId, teacher.id, user.school_id);
+
+    const db = q(env);
+    const rows = await db.all(
+        `SELECT eq.question_id, eq.position, eq.score, q.text, q.type
+           FROM exam_questions eq
+           JOIN questions q ON q.id = eq.question_id
+          WHERE eq.exam_id = ?
+          ORDER BY eq.position, eq.question_id`,
+        exam.id
+    );
+    return ok(rows.results);
+});
 
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);

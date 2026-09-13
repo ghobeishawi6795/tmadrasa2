@@ -90,6 +90,7 @@ const NAV_ITEMS = [
 ];
 
 let cache = { classes: null, students: null, exams: null, questions: null, conversations: null, teachingAssignments: null, assignments: null };
+let selectedQuestionIds = new Set();
 
 function navigate(key) {
     setActiveNav(key);
@@ -610,25 +611,40 @@ async function deleteExam(id) {
 }
 
 async function openExamQuestions(examId) {
-    const [bank, exams] = await Promise.all([
+    const [bank, exams, attached] = await Promise.all([
         cache.questions || api.get("/api/teacher/questions"),
         cache.exams || api.get("/api/teacher/exams"),
+        api.get(`/api/teacher/exam-questions?exam_id=${examId}`),
     ]);
     cache.questions = bank;
     const exam = exams.find(e => e.id === examId);
+    const attachedIds = new Set(attached.map(a => a.question_id));
+    const available = bank.filter(q => !attachedIds.has(q.id));
+    let nextPosition = attached.length;
 
     openModal(`سؤالات آزمون: ${escapeHtml(exam ? exam.title : "")}`, `
-        <div class="page-subtitle" style="margin-bottom:12px">یک سؤال از بانک سؤال انتخاب کن و به این آزمون اضافه کن (فقط برای آزمون پیش‌نویس).</div>
+        ${attached.length ? `
+            <div class="page-subtitle" style="margin-bottom:6px">سؤال‌های اضافه‌شده به این آزمون (${attached.length} سؤال):</div>
+            <ul style="margin:0 0 14px;padding-inline-start:18px;font-size:14px;color:var(--muted)">
+                ${attached.map(a => `<li>${escapeHtml(a.text.slice(0, 60))} — ${a.score} نمره</li>`).join("")}
+            </ul>
+        ` : ""}
+        <div class="page-subtitle" style="margin-bottom:10px">هر چند سؤال که می‌خوای از بانک سؤال تیک بزن و یک‌جا اضافه‌شون کن (فقط برای آزمون پیش‌نویس).</div>
         <form id="attachForm">
-            <div class="form-group"><label>سؤال</label>
-                <select class="form-input" name="question_id" required>
-                    ${bank.map(q => `<option value="${q.id}">${escapeHtml(q.text.slice(0, 60))}</option>`).join("") || `<option disabled>بانک سؤال خالی است</option>`}
-                </select>
+            <div class="form-group">
+                <label>نمره‌ی هر سؤال (به همه‌ی سؤال‌های تیک‌خورده اعمال می‌شه)</label>
+                <input class="form-input" name="score" type="number" min="1" value="10">
             </div>
-            <div class="form-group"><label>نمره این سؤال</label><input class="form-input" name="score" type="number" min="1" value="10"></div>
-            <div class="form-group"><label>ترتیب (position)</label><input class="form-input" name="position" type="number" min="0" value="0"></div>
+            <div style="max-height:320px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;margin-bottom:14px">
+                ${available.length ? available.map(q => `
+                    <label style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer">
+                        <input type="checkbox" name="qids" value="${q.id}" style="margin-top:3px;flex-shrink:0">
+                        <span style="font-size:14px">${escapeHtml(q.text)}<span style="color:var(--muted)"> — ${questionTypeLabel(q.type)}</span></span>
+                    </label>
+                `).join("") : `<div style="padding:14px;color:var(--muted);font-size:14px">همه‌ی سؤال‌های بانک قبلاً به این آزمون اضافه شده‌اند.</div>`}
+            </div>
             <div class="modal-footer">
-                <button type="submit" class="primary-btn">افزودن</button>
+                <button type="submit" class="primary-btn">افزودن سؤال‌های انتخاب‌شده</button>
                 <button type="button" class="secondary-btn" onclick="closeModal()">بستن</button>
             </div>
         </form>
@@ -637,10 +653,23 @@ async function openExamQuestions(examId) {
     document.getElementById("attachForm").addEventListener("submit", async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        const body = Object.fromEntries(fd.entries());
-        body.exam_id = examId;
-        await withToast(() => api.post("/api/teacher/exam-questions", body), "سؤال اضافه شد");
-        closeModal();
+        const score = fd.get("score");
+        const questionIds = fd.getAll("qids");
+        if (questionIds.length === 0) { toast("حداقل یک سؤال را انتخاب کن"); return; }
+
+        let addedCount = 0;
+        for (const questionId of questionIds) {
+            try {
+                await api.post("/api/teacher/exam-questions", {
+                    exam_id: examId, question_id: Number(questionId), score, position: nextPosition++,
+                });
+                addedCount++;
+            } catch (err) {
+                toast(`یک سؤال اضافه نشد: ${err.message || "خطا"}`);
+            }
+        }
+        toast(`${addedCount} سؤال اضافه شد`);
+        openExamQuestions(examId);
     });
 }
 
@@ -657,9 +686,24 @@ async function renderQuestions() {
     if (filters.type) params.set("type", filters.type);
     if (filters.difficulty) params.set("difficulty", filters.difficulty);
     if (filters.favorite) params.set("favorite", "1");
+    if (filters.subject_id) params.set("subject_id", filters.subject_id);
+    if (filters.chapter) params.set("chapter", filters.chapter);
 
+    const subjects = cache.subjects || (cache.subjects = await api.get("/api/admin/subjects"));
     const questions = await api.get(`/api/teacher/questions?${params.toString()}`);
     cache.questions = questions;
+
+    // chapter sub-tabs are derived from whatever chapter values this
+    // teacher has actually used within the selected subject -- a second,
+    // chapter-filter-less fetch of the same subject/scope so the chapter
+    // bar doesn't itself disappear once a chapter filter narrows `questions`.
+    let chaptersInSubject = [];
+    if (scope === "mine" && filters.subject_id) {
+        const p2 = new URLSearchParams({ scope, subject_id: filters.subject_id });
+        const allInSubject = await api.get(`/api/teacher/questions?${p2.toString()}`);
+        chaptersInSubject = [...new Set(allInSubject.map(q => q.chapter).filter(Boolean))].sort();
+    }
+    const activeSubject = subjects.find(s => s.id === Number(filters.subject_id));
 
     document.getElementById("content").innerHTML = `
         <div class="page-head">
@@ -671,9 +715,28 @@ async function renderQuestions() {
             </div>
         </div>
         <div style="display:flex;gap:8px;margin-bottom:10px">
-            <button class="${scope === "mine" ? "primary-btn" : "secondary-btn"}" onclick="cache.questionFilters.scope='mine'; renderQuestions()">بانک من</button>
-            <button class="${scope === "public" ? "primary-btn" : "secondary-btn"}" onclick="cache.questionFilters.scope='public'; renderQuestions()">🌐 بانک عمومی مدرسه</button>
+            <button class="${scope === "mine" ? "primary-btn" : "secondary-btn"}" onclick="selectedQuestionIds.clear(); cache.questionFilters.scope='mine'; renderQuestions()">بانک من</button>
+            <button class="${scope === "public" ? "primary-btn" : "secondary-btn"}" onclick="selectedQuestionIds.clear(); cache.questionFilters.scope='public'; renderQuestions()">🌐 بانک عمومی مدرسه</button>
         </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+            <button class="${!filters.subject_id ? "primary-btn" : "secondary-btn"}" style="padding:6px 12px" onclick="cache.questionFilters.subject_id=null; cache.questionFilters.chapter=null; renderQuestions()">همه‌ی درس‌ها</button>
+            ${subjects.map(s => `
+                <button class="${Number(filters.subject_id) === s.id ? "primary-btn" : "secondary-btn"}" style="padding:6px 12px" onclick="cache.questionFilters.subject_id=${s.id}; cache.questionFilters.chapter=null; renderQuestions()">${escapeHtml(s.name)}</button>
+            `).join("")}
+            ${scope === "mine" ? `<button class="secondary-btn" style="padding:6px 10px" onclick="promptNewSubject()">+ درس جدید</button>` : ""}
+            ${scope === "mine" && activeSubject ? `<button class="secondary-btn" style="padding:6px 8px" title="ویرایش نام این درس" onclick="promptRenameSubject(${activeSubject.id})">✏️</button>` : ""}
+        </div>
+        ${scope === "mine" && filters.subject_id ? `
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding-inline-start:14px">
+                <span class="page-subtitle" style="margin:0">فصل:</span>
+                <button class="${!filters.chapter ? "primary-btn" : "secondary-btn"}" style="padding:4px 10px;font-size:13px" onclick="cache.questionFilters.chapter=null; renderQuestions()">همه</button>
+                ${chaptersInSubject.map(c => `
+                    <button class="${filters.chapter === c ? "primary-btn" : "secondary-btn"}" style="padding:4px 10px;font-size:13px" onclick="cache.questionFilters.chapter=${escapeAttr(c)}; renderQuestions()">${escapeHtml(c)}</button>
+                `).join("")}
+                <button class="secondary-btn" style="padding:4px 10px;font-size:13px" onclick="promptNewChapterTab()">+ فصل جدید</button>
+            </div>
+        ` : ""}
+        <div id="qSelectionBar"></div>
         <div class="module"><div class="module-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
             <input class="form-input" id="qSearch" placeholder="جستجو در متن/فصل/مبحث/برچسب..." value="${escapeHtml(filters.search || "")}" style="flex:1;min-width:180px">
             <select class="form-input" id="qFilterType" style="width:auto">
@@ -693,10 +756,11 @@ async function renderQuestions() {
         </div></div>
         <div class="module"><div class="module-body table-wrap">
             <table>
-                <thead><tr>${scope === "mine" ? "<th></th>" : ""}<th>متن سؤال</th><th>نوع</th>${scope === "mine" ? "<th>تصحیح</th>" : "<th>معلم</th>"}<th></th></tr></thead>
+                <thead><tr>${scope === "mine" ? "<th></th><th></th>" : ""}<th>متن سؤال</th><th>نوع</th>${scope === "mine" ? "<th>تصحیح</th>" : "<th>معلم</th>"}<th></th></tr></thead>
                 <tbody>
                     ${questions.map(q => scope === "mine" ? `
                         <tr>
+                            <td><input type="checkbox" class="qSelectCb" ${selectedQuestionIds.has(q.id) ? "checked" : ""} onchange="toggleQuestionSelect(${q.id}, this.checked)"></td>
                             <td><button class="secondary-btn" style="padding:2px 8px" title="${q.is_favorite ? "حذف از علاقه‌مندی‌ها" : "افزودن به علاقه‌مندی‌ها"}" onclick="toggleQuestionFavorite(${q.id})">${q.is_favorite ? "⭐" : "☆"}</button></td>
                             <td>${escapeHtml(q.text)}${questionMetaChips(q)}${visibilityBadge(q.visibility)}</td>
                             <td>${questionTypeLabel(q.type)}</td>
@@ -707,6 +771,7 @@ async function renderQuestions() {
                                     <button class="secondary-btn" style="padding:6px 8px" title="آمار این سؤال" onclick="openQuestionAnalytics(${q.id})">📊</button>
                                     <button class="secondary-btn" style="padding:6px 8px" title="مهارت‌های مرتبط" onclick="openQuestionSkills(${q.id})">🎯</button>
                                     ${["numeric","multiple_choice","true_false"].includes(q.type) ? `<button class="secondary-btn" style="padding:6px 8px" title="ساخت یک نسخه‌ی مشابه با اعداد دیگر" onclick="generateQuestionVariant(${q.id})">🎲</button>` : ""}
+                                    ${q.import_html ? `<button class="secondary-btn" style="padding:6px 8px" title="نمایش دقیق فایل اصلی وارد‌شده" onclick="openFullscreenHtmlPreview(cache.questions.find(x => x.id === ${q.id}).import_style, cache.questions.find(x => x.id === ${q.id}).import_html)">👁️</button>` : ""}
                                 </div>
                                 ${q.used_in_exam ? `<div class="page-subtitle" style="font-size:11px;margin-top:4px" title="ویرایش این سؤال، آزمون‌هایی که قبلاً به آن‌ها اضافه شده را تغییر نمی‌دهد">نسخه ${q.version} · قبلاً استفاده شده</div>` : ""}
                             </td>
@@ -718,7 +783,7 @@ async function renderQuestions() {
                             <td class="page-subtitle">${escapeHtml(q.teacher_name || "—")}</td>
                             <td><button class="secondary-btn" onclick="copyPublicQuestion(${q.id})">کپی به بانک من</button></td>
                         </tr>
-                    `).join("") || `<tr><td colspan="5" style="text-align:center;color:var(--muted)">${scope === "public" ? "هنوز سؤال عمومی‌ای تأیید نشده" : "سؤالی پیدا نشد"}</td></tr>`}
+                    `).join("") || `<tr><td colspan="6" style="text-align:center;color:var(--muted)">${scope === "public" ? "هنوز سؤال عمومی‌ای تأیید نشده" : "سؤالی پیدا نشد"}</td></tr>`}
                 </tbody>
             </table>
         </div></div>
@@ -744,12 +809,125 @@ async function renderQuestions() {
         cache.questionFilters.favorite = e.target.checked || undefined;
         renderQuestions();
     });
+    updateSelectionBar();
+}
+
+function updateSelectionBar() {
+    const bar = document.getElementById("qSelectionBar");
+    if (!bar) return;
+    const n = selectedQuestionIds.size;
+    bar.innerHTML = n ? `
+        <div class="module" style="margin-bottom:10px"><div class="module-body" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span>${n} سؤال انتخاب شده</span>
+            <button class="primary-btn" onclick="openSendSelectedToExam()">➕ افزودن به آزمون</button>
+            <button class="secondary-btn" onclick="selectedQuestionIds.clear(); renderQuestions()">لغو انتخاب</button>
+        </div></div>
+    ` : "";
+}
+
+function toggleQuestionSelect(id, checked) {
+    if (checked) selectedQuestionIds.add(id); else selectedQuestionIds.delete(id);
+    updateSelectionBar();
+}
+
+async function openSendSelectedToExam() {
+    const exams = (cache.exams || (cache.exams = await api.get("/api/teacher/exams"))).filter(e => e.status === "draft");
+    if (exams.length === 0) {
+        toast("اول یک آزمون پیش‌نویس بساز، بعد سؤال‌ها را بهش اضافه کن");
+        return;
+    }
+    const ids = [...selectedQuestionIds];
+
+    openModal(`افزودن ${ids.length} سؤال به آزمون`, `
+        <form id="sendToExamForm">
+            <div class="form-group"><label>آزمون (فقط پیش‌نویس‌ها)</label>
+                <select class="form-input" name="exam_id" required>
+                    ${exams.map(e => `<option value="${e.id}">${escapeHtml(e.title)} (${escapeHtml(e.class_name)} / ${escapeHtml(e.subject_name)})</option>`).join("")}
+                </select>
+            </div>
+            <div class="form-group"><label>نمره‌ی هر سؤال</label><input class="form-input" name="score" type="number" min="1" value="10"></div>
+            <div class="modal-footer">
+                <button type="submit" class="primary-btn">افزودن</button>
+                <button type="button" class="secondary-btn" onclick="closeModal()">انصراف</button>
+            </div>
+        </form>
+    `);
+
+    document.getElementById("sendToExamForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const examId = Number(fd.get("exam_id"));
+        const score = fd.get("score");
+
+        const attached = await api.get(`/api/teacher/exam-questions?exam_id=${examId}`);
+        const attachedIds = new Set(attached.map(a => a.question_id));
+        let nextPosition = attached.length;
+
+        let addedCount = 0, skippedCount = 0;
+        for (const id of ids) {
+            if (attachedIds.has(id)) { skippedCount++; continue; }
+            try {
+                await api.post("/api/teacher/exam-questions", { exam_id: examId, question_id: id, score, position: nextPosition++ });
+                addedCount++;
+            } catch (err) {
+                toast(`یک سؤال اضافه نشد: ${err.message || "خطا"}`);
+            }
+        }
+        closeModal();
+        selectedQuestionIds.clear();
+        toast(`${addedCount} سؤال اضافه شد` + (skippedCount ? `، ${skippedCount} مورد قبلاً روی این آزمون بود` : ""));
+        cache.exams = null;
+        renderQuestions();
+    });
 }
 
 async function toggleQuestionFavorite(id) {
     await api.post("/api/teacher/toggle-question-favorite", { id });
     cache.questions = null;
     renderQuestions();
+}
+
+async function promptNewSubject() {
+    const name = prompt("نام درس جدید:");
+    if (!name || !name.trim()) return;
+    await withToast(() => api.post("/api/admin/subjects", { name: name.trim() }), "درس ساخته شد");
+    cache.subjects = null;
+    renderQuestions();
+}
+
+async function promptRenameSubject(id) {
+    const subject = cache.subjects.find(s => s.id === id);
+    const name = prompt("نام جدید درس:", subject ? subject.name : "");
+    if (!name || !name.trim() || (subject && name.trim() === subject.name)) return;
+    await withToast(() => api.put("/api/admin/subjects", { id, name: name.trim() }), "نام درس بروزرسانی شد");
+    cache.subjects = null;
+    renderQuestions();
+}
+
+// A chapter isn't a separate managed entity -- it's just whatever text a
+// teacher puts in a question's "فصل" field. "+ فصل جدید" only sets it as
+// the active filter/prefill so the very next question created lands in it;
+// it becomes a real, permanent tab as soon as any question actually uses it.
+function promptNewChapterTab() {
+    const name = prompt("نام فصل جدید (بعد از افزودن اولین سؤال با این فصل، به‌صورت دائم به‌عنوان یک تب نشان داده می‌شود):");
+    if (!name || !name.trim()) return;
+    cache.questionFilters.chapter = name.trim();
+    renderQuestions();
+}
+
+function openFullscreenHtmlPreview(styleCss, html) {
+    document.getElementById("htmlPreviewOverlay")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "htmlPreviewOverlay";
+    overlay.style.cssText = "position:fixed;inset:0;background:#fff;z-index:9999;display:flex;flex-direction:column";
+    overlay.innerHTML = `
+        <div style="display:flex;justify-content:flex-end;padding:8px;border-bottom:1px solid var(--line);flex-shrink:0">
+            <button class="secondary-btn" onclick="document.getElementById('htmlPreviewOverlay').remove()">✕ بستن</button>
+        </div>
+        <iframe sandbox="" style="flex:1;width:100%;border:none"></iframe>
+    `;
+    document.body.appendChild(overlay);
+    overlay.querySelector("iframe").srcdoc = `<style>${styleCss || ""}</style>${html}`;
 }
 
 async function copyPublicQuestion(id) {
@@ -962,6 +1140,10 @@ function submitImportHtml() {
 
 function openQuestionForm(existing) {
     const isEdit = !!existing;
+    const subjects = cache.subjects || [];
+    const filters = cache.questionFilters || {};
+    const defaultSubjectId = isEdit ? existing.subject_id : filters.subject_id;
+    const defaultChapter = isEdit ? (existing.chapter || "") : (filters.chapter || "");
     openModal(isEdit ? "ویرایش سؤال" : "سؤال جدید", `
         <form id="questionForm">
             <div class="form-group"><label>نوع سؤال</label>
@@ -978,9 +1160,14 @@ function openQuestionForm(existing) {
             </div>
             <div class="form-group"><label id="qTextLabel">متن سؤال</label><textarea class="form-input" name="text" id="qText" rows="2" style="height:auto;padding:10px 12px" required>${isEdit ? escapeHtml(existing.text) : ""}</textarea></div>
             <div id="qSimilarWarning"></div>
-            <div class="form-group"><label>شناسه درس (اختیاری)</label><input class="form-input" name="subject_id" type="number" value="${isEdit && existing.subject_id ? existing.subject_id : ""}"></div>
+            <div class="form-group"><label>درس (اختیاری)</label>
+                <select class="form-input" name="subject_id">
+                    <option value="">— مشخص نشده —</option>
+                    ${subjects.map(s => `<option value="${s.id}" ${Number(defaultSubjectId) === s.id ? "selected" : ""}>${escapeHtml(s.name)}</option>`).join("")}
+                </select>
+            </div>
             <div style="display:flex;gap:10px">
-                <div class="form-group" style="flex:1"><label>فصل (اختیاری)</label><input class="form-input" name="chapter" value="${isEdit ? escapeHtml(existing.chapter || "") : ""}"></div>
+                <div class="form-group" style="flex:1"><label>فصل (اختیاری)</label><input class="form-input" name="chapter" value="${escapeHtml(defaultChapter)}"></div>
                 <div class="form-group" style="flex:1"><label>مبحث (اختیاری)</label><input class="form-input" name="topic" value="${isEdit ? escapeHtml(existing.topic || "") : ""}"></div>
             </div>
             <div class="form-group"><label>سطح سختی (اختیاری)</label>
@@ -1020,7 +1207,10 @@ function openQuestionForm(existing) {
             const matches = await api.post("/api/teacher/find-similar-questions", { text, exclude_id: isEdit ? existing.id : undefined });
             box.innerHTML = matches.length ? `
                 <div class="page-subtitle" style="background:var(--surface2);border-radius:8px;padding:8px 10px;margin:-8px 0 12px">
-                    شبیه به سؤال‌های موجود تو بانکت: ${matches.map(m => `«${escapeHtml(m.text.slice(0, 40))}${m.text.length > 40 ? "…" : ""}» (${m.similarity_pct}٪)`).join("، ")}
+                    شبیه به سؤال‌های موجود: ${matches.map(m => {
+                        const label = m.is_mine ? "تو بانکت" : `در بانک عمومی، از ${escapeHtml(m.teacher_name)}`;
+                        return `«${escapeHtml(m.text.slice(0, 40))}${m.text.length > 40 ? "…" : ""}» (${label} — ${m.similarity_pct}٪)`;
+                    }).join("، ")}
                 </div>
             ` : "";
         }, 500);
@@ -1414,8 +1604,8 @@ const HELP_SECTIONS = [
     { icon: "🏫", title: "کلاس‌های من", body: "فهرست کلاس/درس‌هایی که مدیر مدرسه شما را برای تدریس آن‌ها تخصیص داده است." },
     { icon: "📚", title: "تکالیف", body: "ساخت تکلیف با ۶ نوع پاسخ ممکن برای دانش‌آموز: متنی، عکس، صوتی، نقاشی (تصحیح دستی)، یا تطبیق / دسته‌بندی (تصحیح کاملاً خودکار). مشاهده و نمره‌دهی به پاسخ‌های ارسالی از همین بخش." },
     { icon: "📝", title: "آزمون‌ها", body: "ساخت آزمون (پیش‌نویس)، افزودن سؤال از بانک سؤال، تعیین زمان شروع/پایان و مدت، سپس انتشار برای دانش‌آموزان. بعد از انتشار فقط می‌توان آزمون را بست، نه ویرایش کرد." },
-    { icon: "🗂️", title: "بانک سؤال", body: "ساخت سؤال با ۷ نوع (چندگزینه‌ای، درست/غلط، عددی، جای‌خالی، پاسخ کوتاه، تشریحی، HTML تعاملی دلخواه). «جای‌خالی» یک متن کوتاه با جواب دقیق‌ه — خودت تعیین می‌کنی خودکار تصحیح بشه یا دستی. «HTML تعاملی دلخواه» یعنی یک بازی/شبیه‌سازی/تمرین کامل که خودت (یا هوش مصنوعی) می‌سازی — همیشه نیازمند تصحیح دستی‌ه؛ راهنمای کاملش تو docs/راهنمای-سوال-html-تعاملی.md هست. می‌تونی برای هر سؤال فصل/مبحث/سطح سختی/برچسب مشخص کنی، سؤال‌های مهم رو ستاره بزنی، و جستجو/فیلتر کنی. موقع نوشتن سؤال جدید، اگه چیز شبیهی تو بانکت باشه بهت هشدار می‌ده. دکمه‌ی 📊 آمار موفقیت سؤال رو نشون می‌ده، 🎯 امکان وصل‌کردن سؤال به «مهارت»های خودت رو می‌ده، و 🎲 (فقط برای سؤال‌های محاسباتی چندگزینه‌ای/عددی/درست‌غلط) یک نسخه‌ی مشابه با اعداد دیگه می‌سازه. دکمه‌ی «قالب‌های آماده» چند بسته سؤال نمونه رو مستقیم به بانک تو کپی می‌کنه. تب «🌐 بانک عمومی مدرسه» سؤال‌هایی رو نشون می‌ده که بقیه‌ی معلم‌ها به اشتراک گذاشتن و مدیر تأیید کرده — می‌تونی هرکدوم رو به بانک خودت کپی کنی. برای اشتراک‌گذاشتن سؤال خودت، تو فرم سؤال یک تیک بزن؛ تا مدیر تأییدش نکنه عمومی نمی‌شه. ویرایش سؤال همیشه ممکنه، حتی اگه قبلاً به یک آزمون اضافه شده باشه — هر آزمون نسخه‌ای از سؤال رو که موقع اضافه‌کردن وجود داشته نگه می‌داره. دکمه‌ی «وارد کردن از HTML» امکان افزودن دسته‌جمعی سؤال/تکلیف از یک فایل HTML با قالب مشخص را می‌دهد (این یکی تزئینی‌ست، اسکریپت اجرا نمی‌کنه — با نوع «HTML تعاملی دلخواه» بالا اشتباه نگیر)." },
-    { icon: "✅", title: "تصحیح دستی", body: "پاسخ‌های آزمون که نیاز به بررسی دستی دارند (سؤالات پاسخ کوتاه/تشریحی) اینجا نمره‌گذاری می‌شوند." },
+    { icon: "🗂️", title: "بانک سؤال", body: "ساخت سؤال با ۷ نوع (چندگزینه‌ای، درست/غلط، عددی، جای‌خالی، پاسخ کوتاه، تشریحی، HTML تعاملی دلخواه). «جای‌خالی» یک متن کوتاه با جواب دقیق‌ه — خودت تعیین می‌کنی خودکار تصحیح بشه یا دستی. «HTML تعاملی دلخواه» یعنی یک بازی/شبیه‌سازی/تمرین کامل که خودت (یا هوش مصنوعی) می‌سازی — همیشه نیازمند تصحیح دستی‌ه؛ راهنمای کاملش تو docs/راهنمای-سوال-html-تعاملی.md هست. می‌تونی برای هر سؤال فصل/مبحث/سطح سختی/برچسب مشخص کنی، سؤال‌های مهم رو ستاره بزنی، و جستجو/فیلتر کنی. موقع نوشتن سؤال جدید، اگه چیز شبیهی تو بانک خودت یا بانک عمومی مدرسه باشه بهت هشدار می‌ده (مشخص می‌کنه مال خودته یا از کدوم معلم دیگه‌ست). دکمه‌ی 📊 آمار موفقیت سؤال رو نشون می‌ده، 🎯 امکان وصل‌کردن سؤال به «مهارت»های خودت رو می‌ده، و 🎲 (فقط برای سؤال‌های محاسباتی چندگزینه‌ای/عددی/درست‌غلط) یک نسخه‌ی مشابه با اعداد دیگه می‌سازه. دکمه‌ی «قالب‌های آماده» چند بسته سؤال نمونه رو مستقیم به بانک تو کپی می‌کنه. تب «🌐 بانک عمومی مدرسه» سؤال‌هایی رو نشون می‌ده که بقیه‌ی معلم‌ها به اشتراک گذاشتن و مدیر تأیید کرده — می‌تونی هرکدوم رو به بانک خودت کپی کنی. برای اشتراک‌گذاشتن سؤال خودت، تو فرم سؤال یک تیک بزن؛ تا مدیر تأییدش نکنه عمومی نمی‌شه. ویرایش سؤال همیشه ممکنه، حتی اگه قبلاً به یک آزمون اضافه شده باشه — هر آزمون نسخه‌ای از سؤال رو که موقع اضافه‌کردن وجود داشته نگه می‌داره. دکمه‌ی «وارد کردن از HTML» امکان افزودن دسته‌جمعی سؤال/تکلیف از یک فایل HTML با قالب مشخص را می‌دهد (این یکی تزئینی‌ست، اسکریپت اجرا نمی‌کنه — با نوع «HTML تعاملی دلخواه» بالا اشتباه نگیر)." },
+    { icon: "✅", title: "تصحیح دستی", body: "پاسخ‌های آزمون که نیاز به بررسی دستی دارند اینجا نمره‌گذاری می‌شوند: سؤالات پاسخ کوتاه/تشریحی همیشه، «جای‌خالی» فقط اگه خودت موقع ساختنش تصحیح دستی رو انتخاب کرده باشی، و «HTML تعاملی دلخواه» همیشه (چون نمره‌ای که خود مرورگر دانش‌آموز گزارش می‌ده هیچ‌وقت قابل‌اعتماد نیست و فقط به‌عنوان پیشنهاد اولیه نشون داده می‌شه)." },
     { icon: "📋", title: "حضور و غیاب", body: "برای هر کلاس، جلسه‌ی حضور و غیاب امروز را بساز و وضعیت هر دانش‌آموز (حاضر/غایب/تأخیر/موجه) را ثبت کن." },
     { icon: "🎯", title: "نمرات", body: "ثبت دستی نمره برای هر دانش‌آموز در یک کلاس/درس (مثلاً نمره‌ی نهایی یا مستمر) — جدا از نمره‌ی خودکار تکلیف/آزمون." },
     { icon: "💬", title: "پیام‌ها", body: "شروع گفتگوی مستقیم با یک دانش‌آموز و پاسخ‌گویی به گفتگوهای موجود." },
