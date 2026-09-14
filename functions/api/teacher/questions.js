@@ -200,16 +200,16 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     // attach options for multiple_choice questions, and whether it's been
     // used in an exam yet (informational only -- editing is always allowed,
     // see onRequestPut)
-    const ids = questions.results.map(question => question.id);
+    const questionIds = questions.results.map(question => question.id);
     const optionsByQuestion = new Map();
     const usedIds = new Set();
-    if (ids.length) {
-        const opts = await db.all(`SELECT * FROM question_options WHERE question_id IN (${ids.map(() => "?").join(",")})`, ...ids);
+    if (questionIds.length) {
+        const opts = await db.all(`SELECT * FROM question_options WHERE question_id IN (${questionIds.map(() => "?").join(",")})`, ...questionIds);
         for (const o of opts.results) {
             if (!optionsByQuestion.has(o.question_id)) optionsByQuestion.set(o.question_id, []);
             optionsByQuestion.get(o.question_id).push(o);
         }
-        const used = await db.all(`SELECT DISTINCT question_id FROM exam_questions WHERE question_id IN (${ids.map(() => "?").join(",")})`, ...ids);
+        const used = await db.all(`SELECT DISTINCT question_id FROM exam_questions WHERE question_id IN (${questionIds.map(() => "?").join(",")})`, ...questionIds);
         for (const row of used.results) usedIds.add(row.question_id);
     }
     const results = questions.results.map(question => {
