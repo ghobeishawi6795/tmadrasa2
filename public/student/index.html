@@ -929,8 +929,28 @@ function practiceTypeLabel(t) {
     return { multiple_choice: "چندگزینه‌ای", true_false: "درست/غلط", numeric: "عددی", short_answer: "پاسخ کوتاه", long_answer: "تشریحی", fill_blank: "جای‌خالی", custom_html: "HTML تعاملی" }[t] || t;
 }
 
+function weakChaptersCardHtml(chapters) {
+    if (!chapters || !chapters.length) return "";
+    return `
+        <div class="card" style="margin-bottom:14px" id="weakChaptersCard">
+            <div class="card-head"><div class="card-title">⚠️ فصل‌هایی که بیشتر نیاز به تمرین دارن</div></div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+                ${chapters.map(c => `
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                        <div>${escapeHtml(c.subject_name)} · ${escapeHtml(c.chapter)}</div>
+                        <span class="status ${c.correct_percent < 50 ? "red" : "orange"}">${c.correct_percent}% درست (${c.answered_count} سؤال)</span>
+                    </div>
+                `).join("")}
+            </div>
+        </div>
+    `;
+}
+
 async function renderPractice() {
-    const subjects = await api.get("/api/student/practice-subjects");
+    const [subjects, weakChapters] = await Promise.all([
+        api.get("/api/student/practice-subjects"),
+        api.get("/api/student/practice-weak-chapters"),
+    ]);
     cache.practiceFilters = cache.practiceFilters || {};
     const filters = cache.practiceFilters;
 
@@ -968,6 +988,7 @@ async function renderPractice() {
             <div class="stat-card"><div class="stat-top"><div class="stat-icon">❌</div></div><div class="stat-value" id="pSumIncorrect">${totals.incorrect}</div><div class="stat-label">غلط</div></div>
             <div class="stat-card"><div class="stat-value" id="pSumRemaining">${totals.total - totals.answered}</div><div class="stat-label">باقی‌مانده</div></div>
         </div>
+        <div id="weakChaptersBox">${weakChaptersCardHtml(weakChapters)}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
             ${subjects.map(s => `
                 <button class="${Number(activeSubjectId) === s.id ? "primary-btn" : "secondary-btn"}" style="padding:6px 12px" onclick="cache.practiceFilters={subject_id:${s.id}}; renderPractice()">${escapeHtml(s.name)} <span style="opacity:.7">(${s.question_count})</span></button>
@@ -1098,7 +1119,10 @@ async function submitPracticeAnswer(questionId, type) {
 // whole question list (which would lose whatever the student was mid-typing
 // on other questions on the page).
 async function refreshPracticeSummary() {
-    const subjects = await api.get("/api/student/practice-subjects");
+    const [subjects, weakChapters] = await Promise.all([
+        api.get("/api/student/practice-subjects"),
+        api.get("/api/student/practice-weak-chapters"),
+    ]);
     const totals = subjects.reduce((acc, s) => ({
         total: acc.total + s.question_count,
         answered: acc.answered + s.answered_count,
@@ -1111,6 +1135,8 @@ async function refreshPracticeSummary() {
     document.getElementById("pSumCorrect").textContent = totals.correct;
     document.getElementById("pSumIncorrect").textContent = totals.incorrect;
     document.getElementById("pSumRemaining").textContent = totals.total - totals.answered;
+    const weakBox = document.getElementById("weakChaptersBox");
+    if (weakBox) weakBox.innerHTML = weakChaptersCardHtml(weakChapters);
 }
 
 /* =========================================================
@@ -1440,7 +1466,7 @@ const HELP_SECTIONS = [
     { icon: "🏠", title: "خانه", body: "نمای کلی وضعیت تحصیلی: آزمون‌های پیش رو، تعداد روزهای حاضر/غایب و میانگین کل نمرات." },
     { icon: "📚", title: "تکالیف", body: "فهرست تکالیف با مهلت ارسال. بسته به نوع تکلیف باید پاسخ متنی بنویسی، عکس بگیری، صدا ضبط کنی، نقاشی بکشی، یا در تطبیق/دسته‌بندی شرکت کنی — این دو مورد آخر بلافاصله بعد از ارسال نمره‌ات را نشان می‌دهند." },
     { icon: "📝", title: "آزمون‌ها", body: "آزمون‌های فعال کلاست را همینجا شروع می‌کنی و پاسخ می‌دهی؛ می‌توانی هر پاسخ را جدا ذخیره کنی و در پایان ارسال نهایی بزنی. نتیجه‌ی آزمون‌های قبلی هم همینجا قابل مشاهده است." },
-    { icon: "🧪", title: "تمرین", body: "سؤال‌هایی از بانک سؤال معلم که فقط برای تمرینِ خودت هستند — نتیجه‌شان هیچ‌وقت در کارنامه حساب نمی‌شود. با تب‌های درس و فصل مثل بانک سؤال معلم پیش می‌روی، هر سؤال را جواب می‌دهی و بلافاصله می‌فهمی درست بوده یا نه (برای بعضی سؤال‌ها هم توضیح یا پاسخ نمونه نشان داده می‌شود). می‌توانی هر سؤال را چند بار دوباره امتحان کنی. بالای صفحه خلاصه‌ی تعداد درست/غلط/باقی‌مانده‌ات را می‌بینی، و دکمه‌ی «⚡ تمرین سریع» چند سؤال تصادفی از همان بخش را پشت‌سرهم با نوار پیشرفت جلو می‌برد." },
+    { icon: "🧪", title: "تمرین", body: "سؤال‌هایی از بانک سؤال معلم که فقط برای تمرینِ خودت هستند — نتیجه‌شان هیچ‌وقت در کارنامه حساب نمی‌شود. با تب‌های درس و فصل مثل بانک سؤال معلم پیش می‌روی، هر سؤال را جواب می‌دهی و بلافاصله می‌فهمی درست بوده یا نه (برای بعضی سؤال‌ها هم توضیح یا پاسخ نمونه نشان داده می‌شود). می‌توانی هر سؤال را چند بار دوباره امتحان کنی. بالای صفحه خلاصه‌ی تعداد درست/غلط/باقی‌مانده‌ات را می‌بینی، و دکمه‌ی «⚡ تمرین سریع» چند سؤال تصادفی از همان بخش را پشت‌سرهم با نوار پیشرفت جلو می‌برد. اگر در فصلی چند سؤال جواب داده باشی، بالای صفحه فصل‌هایی که درصد درستی‌شان کمتر است به‌عنوان «نیاز به تمرین بیشتر» نشان داده می‌شود." },
     { icon: "📋", title: "حضور و غیاب", body: "سابقه‌ی کامل حضور، غیاب، تأخیر و موجه‌بودنت در طول سال." },
     { icon: "🎯", title: "کارنامه", body: "میانگین نمرات هر درس به همراه منبع هر نمره (تکلیف/آزمون/دستی) و بازخورد معلم — دکمه‌ی چاپ برای خروجی PDF هم موجود است." },
     { icon: "💬", title: "پیام‌ها", body: "گفتگوهایی که معلم یا مدیر مدرسه با تو شروع کرده — می‌توانی پاسخ بدهی، ولی نمی‌توانی خودت گفتگوی جدید شروع کنی." },

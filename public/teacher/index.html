@@ -2343,7 +2343,10 @@ async function renderGrades() {
 async function loadGrades() {
     const [classId, subjectId] = document.getElementById("gradesComboSelect").value.split(":");
 
-    const grades = await api.get(`/api/teacher/grades?class_id=${classId}&subject_id=${subjectId}`);
+    const [grades, students] = await Promise.all([
+        api.get(`/api/teacher/grades?class_id=${classId}&subject_id=${subjectId}`),
+        api.get(`/api/admin/students?class_id=${classId}`),
+    ]);
     document.getElementById("gradesBox").innerHTML = `
         <div class="page-head"><div class="page-subtitle">${grades.length} نمره ثبت‌شده</div>
             <button class="primary-btn" onclick="openGradeForm(${classId}, ${subjectId})">+ ثبت نمره</button>
@@ -2356,7 +2359,36 @@ async function loadGrades() {
                 </tbody>
             </table>
         </div></div>
+        <div class="card" style="margin-top:14px">
+            <div class="card-head"><div class="card-title">⚠️ ضعیف‌ترین فصل‌ها (بر اساس تمرین)</div></div>
+            <div class="page-subtitle" style="margin-bottom:8px">برای هر دانش‌آموز، فصل‌هایی که در بخش تمرین بیشترین نیاز به تکرار دارند</div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+                ${students.map(s => `
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                        <div>${escapeHtml(s.full_name)}</div>
+                        <button class="secondary-btn" style="padding:4px 10px;font-size:13px" onclick="openWeakChaptersModal(${s.id}, ${classId}, ${subjectId}, ${escapeAttr(s.full_name)})">مشاهده</button>
+                    </div>
+                `).join("") || `<div class="page-subtitle">دانش‌آموزی در این کلاس نیست</div>`}
+            </div>
+        </div>
     `;
+}
+
+async function openWeakChaptersModal(studentId, classId, subjectId, studentName) {
+    const chapters = await api.get(`/api/teacher/practice-weak-chapters?student_id=${studentId}&class_id=${classId}&subject_id=${subjectId}`);
+    openModal(`ضعیف‌ترین فصل‌ها — ${escapeHtml(studentName)}`, `
+        ${chapters.length ? `
+            <div style="display:flex;flex-direction:column;gap:8px">
+                ${chapters.map(c => `
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                        <div>${escapeHtml(c.chapter)}</div>
+                        <span class="status ${c.correct_percent < 50 ? "red" : "orange"}">${c.correct_percent}% درست (${c.answered_count} سؤال تمرینی)</span>
+                    </div>
+                `).join("")}
+            </div>
+        ` : `<div class="page-subtitle">این دانش‌آموز هنوز به اندازه‌ی کافی سؤال تمرینی در این درس جواب نداده — یا در همه‌ی فصل‌ها وضعیت خوبی دارد.</div>`}
+        <div class="modal-footer"><button type="button" class="secondary-btn" onclick="closeModal()">بستن</button></div>
+    `);
 }
 
 async function openGradeForm(classId, subjectId) {
@@ -2480,7 +2512,7 @@ const HELP_SECTIONS = [
     { icon: "🗂️", title: "بانک سؤال", body: "ساخت سؤال با ۷ نوع (چندگزینه‌ای، درست/غلط، عددی، جای‌خالی، پاسخ کوتاه، تشریحی، HTML تعاملی دلخواه). «جای‌خالی» یک متن کوتاه با جواب دقیق‌ه — خودت تعیین می‌کنی خودکار تصحیح بشه یا دستی. «HTML تعاملی دلخواه» یعنی یک بازی/شبیه‌سازی/تمرین کامل که خودت (یا هوش مصنوعی) می‌سازی — همیشه نیازمند تصحیح دستی‌ه؛ راهنمای کاملش تو docs/راهنمای-سوال-html-تعاملی.md هست. می‌تونی برای هر سؤال فصل/مبحث/سطح سختی/برچسب مشخص کنی، سؤال‌های مهم رو ستاره بزنی، و جستجو/فیلتر کنی. موقع نوشتن سؤال جدید، اگه چیز شبیهی تو بانک خودت یا بانک عمومی مدرسه باشه بهت هشدار می‌ده (مشخص می‌کنه مال خودته یا از کدوم معلم دیگه‌ست). دکمه‌ی 📊 آمار موفقیت سؤال رو نشون می‌ده، 🎯 امکان وصل‌کردن سؤال به «مهارت»های خودت رو می‌ده، و 🎲 (فقط برای سؤال‌های محاسباتی چندگزینه‌ای/عددی/درست‌غلط) یک نسخه‌ی مشابه با اعداد دیگه می‌سازه. دکمه‌ی «قالب‌های آماده» چند بسته سؤال نمونه رو مستقیم به بانک تو کپی می‌کنه. تب «🌐 بانک عمومی مدرسه» سؤال‌هایی رو نشون می‌ده که بقیه‌ی معلم‌ها به اشتراک گذاشتن و مدیر تأیید کرده — می‌تونی هرکدوم رو به بانک خودت کپی کنی. برای اشتراک‌گذاشتن سؤال خودت، تو فرم سؤال یک تیک بزن؛ تا مدیر تأییدش نکنه عمومی نمی‌شه. ویرایش سؤال همیشه ممکنه، حتی اگه قبلاً به یک آزمون اضافه شده باشه — هر آزمون نسخه‌ای از سؤال رو که موقع اضافه‌کردن وجود داشته نگه می‌داره. دکمه‌ی «وارد کردن از HTML» امکان افزودن دسته‌جمعی سؤال/تکلیف از یک فایل HTML با قالب مشخص را می‌دهد (این یکی تزئینی‌ست، اسکریپت اجرا نمی‌کنه — با نوع «HTML تعاملی دلخواه» بالا اشتباه نگیر). دکمه‌ی 🧪 روی هر سؤال آن را در بخش «تمرین» دانش‌آموزان (بدون احتساب نمره) نمایان می‌کند — سؤال باید یک درس مشخص داشته باشد تا آنجا دیده شود." },
     { icon: "✅", title: "تصحیح دستی", body: "پاسخ‌های آزمون که نیاز به بررسی دستی دارند اینجا نمره‌گذاری می‌شوند: سؤالات پاسخ کوتاه/تشریحی همیشه، «جای‌خالی» فقط اگه خودت موقع ساختنش تصحیح دستی رو انتخاب کرده باشی، و «HTML تعاملی دلخواه» همیشه (چون نمره‌ای که خود مرورگر دانش‌آموز گزارش می‌ده هیچ‌وقت قابل‌اعتماد نیست و فقط به‌عنوان پیشنهاد اولیه نشون داده می‌شه)." },
     { icon: "📋", title: "حضور و غیاب", body: "برای هر کلاس، جلسه‌ی حضور و غیاب امروز را بساز و وضعیت هر دانش‌آموز (حاضر/غایب/تأخیر/موجه) را ثبت کن." },
-    { icon: "🎯", title: "نمرات", body: "ثبت دستی نمره برای هر دانش‌آموز در یک کلاس/درس (مثلاً نمره‌ی نهایی یا مستمر) — جدا از نمره‌ی خودکار تکلیف/آزمون." },
+    { icon: "🎯", title: "نمرات", body: "ثبت دستی نمره برای هر دانش‌آموز در یک کلاس/درس (مثلاً نمره‌ی نهایی یا مستمر) — جدا از نمره‌ی خودکار تکلیف/آزمون. پایین همین صفحه، برای هر دانش‌آموز می‌توانید فصل‌هایی از این درس را ببینید که در بخش تمرین بیشترین نیاز به تکرار دارند." },
     { icon: "💬", title: "پیام‌ها", body: "شروع گفتگوی مستقیم با یک دانش‌آموز و پاسخ‌گویی به گفتگوهای موجود." },
 ];
 

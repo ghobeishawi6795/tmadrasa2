@@ -197,7 +197,10 @@ async function renderChildren() {
 
 async function renderGrades() {
     const children = await loadChildren();
-    const report = await api.get(`/api/parent/grades?student_id=${selectedChild}`);
+    const [report, weakChapters] = await Promise.all([
+        api.get(`/api/parent/grades?student_id=${selectedChild}`),
+        api.get(`/api/parent/practice-weak-chapters?student_id=${selectedChild}`),
+    ]);
 
     window.__lastReportCard = report; // used by printReportCard()
     window.__lastReportChildName = (children.find(c => c.student_id === selectedChild) || {}).full_name || "";
@@ -211,6 +214,19 @@ async function renderGrades() {
         <div class="stats" style="grid-template-columns:repeat(1,1fr);max-width:260px">
             <div class="stat-card"><div class="stat-value">${report.overall_average ?? "—"}</div><div class="stat-label">میانگین کل</div></div>
         </div>
+        ${weakChapters.length ? `
+            <div class="card" style="margin-bottom:14px">
+                <div class="card-head"><div class="card-title">⚠️ فصل‌هایی که فرزندتان بیشتر نیاز به تمرین دارد</div></div>
+                <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+                    ${weakChapters.map(c => `
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                            <div>${escapeHtml(c.subject_name)} · ${escapeHtml(c.chapter)}</div>
+                            <span class="status ${c.correct_percent < 50 ? "red" : "orange"}">${c.correct_percent}% درست (${c.answered_count} سؤال تمرینی)</span>
+                        </div>
+                    `).join("")}
+                </div>
+            </div>
+        ` : ""}
         ${report.subjects.map(s => `
             <div class="card" style="margin-bottom:14px">
                 <div class="card-head"><div class="card-title">${escapeHtml(s.subject_name)}</div><span class="status green">میانگین: ${s.average ?? "—"}</span></div>
@@ -433,7 +449,7 @@ async function renderAnnouncements() {
 const HELP_SECTIONS = [
     { icon: "🏠", title: "خانه", body: "نمای کلی وضعیت همه‌ی فرزندانت: تعداد فرزندان، تکالیف فعال، آزمون‌های پیش رو و غیبت‌های ۱۴ روز اخیر." },
     { icon: "👨‍👩‍👧", title: "فرزندان", body: "فهرست فرزندانی که مدیر مدرسه به حساب تو متصل کرده، به همراه کلاس هرکدام." },
-    { icon: "🎯", title: "وضعیت تحصیلی", body: "کارنامه‌ی هر فرزند (اگر بیش از یک فرزند داری، از بالای صفحه انتخاب کن) — میانگین هر درس، منبع نمره و بازخورد معلم. دکمه‌ی چاپ برای خروجی PDF هم هست." },
+    { icon: "🎯", title: "وضعیت تحصیلی", body: "کارنامه‌ی هر فرزند (اگر بیش از یک فرزند داری، از بالای صفحه انتخاب کن) — میانگین هر درس، منبع نمره و بازخورد معلم. دکمه‌ی چاپ برای خروجی PDF هم هست. اگر فرزندتان در بخش تمرین چند سؤال از یک فصل جواب داده باشد، فصل‌هایی که درصد درستی‌شان کمتر است هم همین‌جا نشان داده می‌شود." },
     { icon: "📚", title: "تکالیف", body: "فهرست تکالیف فرزند، مهلت، وضعیت ارسال و نمره (در صورت تصحیح)." },
     { icon: "📝", title: "آزمون‌ها", body: "فهرست آزمون‌های فرزند و نتیجه (در صورت شرکت و تصحیح)." },
     { icon: "📋", title: "حضور و غیاب", body: "سابقه‌ی کامل حضور، غیاب، تأخیر و موجه‌بودن فرزند." },
