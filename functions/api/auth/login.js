@@ -7,6 +7,7 @@ import { requireFields, readJson, withErrorHandling } from "../_shared/validate.
 import { writeAudit } from "../_shared/audit.js";
 
 const MAX_FAILED_ATTEMPTS = 5;
+const MAX_IP_FAILED_ATTEMPTS = 30;
 const WINDOW_MINUTES = 15;
 
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
@@ -25,8 +26,14 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
             AND created_at > datetime('now', '-${WINDOW_MINUTES} minutes')`,
         body.username, body.school_id
     );
+    const recentIpFailures = await db.first(
+        `SELECT COUNT(*) as c FROM login_attempts
+          WHERE ip_address = ? AND school_id = ? AND success = 0
+            AND created_at > datetime('now', '-${WINDOW_MINUTES} minutes')`,
+        ip, body.school_id
+    );
 
-    if (recentFailures.c >= MAX_FAILED_ATTEMPTS) {
+    if (recentFailures.c >= MAX_FAILED_ATTEMPTS || recentIpFailures.c >= MAX_IP_FAILED_ATTEMPTS) {
         throw errors.forbidden("تعداد تلاش‌های ناموفق زیاد بوده؛ چند دقیقه دیگر تلاش کنید");
     }
 

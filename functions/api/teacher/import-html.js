@@ -60,6 +60,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
             continue;
         }
 
+        let questionId = null;
         try {
             if (!examPermChecked) { await requirePermission(env, user, "questions.create"); examPermChecked = true; }
 
@@ -75,7 +76,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
                 (item.type === "short_answer" || item.type === "long_answer") ? (item.correct_text || null) : null,
                 item.blockHtml || null, styleBlock || null
             );
-            const questionId = r.meta.last_row_id;
+            questionId = r.meta.last_row_id;
 
             if (item.type === "multiple_choice") {
                 let correctOptionId = null;
@@ -90,6 +91,14 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
             }
             imported++;
         } catch (e) {
+            // Do not leave a half-imported question behind when an option or
+            // answer-key write fails after the base question was inserted.
+            if (questionId !== null) {
+                try {
+                    await db.run(`DELETE FROM question_options WHERE question_id = ?`, questionId);
+                    await db.run(`DELETE FROM questions WHERE id = ? AND school_id = ?`, questionId, user.school_id);
+                } catch { /* preserve the original import failure */ }
+            }
             skipped.push({ index: item.index, reason: "خطای نامشخص هنگام ثبت (احتمالاً ساختار داخلی نامعتبر)" });
         }
     }
@@ -144,6 +153,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
         }
 
         if (bundleItems.length > 0) {
+            let assignmentId = null;
             try {
                 if (!assignPermChecked) { await requirePermission(env, user, "assignments.create"); assignPermChecked = true; }
                 await assertTeacherTeachesSubjectInClass(env, teacher.id, body.class_id, canonicalSubjectId, user.school_id);
@@ -159,7 +169,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
                     user.school_id, body.class_id, canonicalSubjectId, teacher.id, first.title,
                     first.description || null, dueAt, styleBlock
                 );
-                const assignmentId = assignResult.meta.last_row_id;
+                assignmentId = assignResult.meta.last_row_id;
 
                 let orderIndex = 0;
                 for (const item of bundleItems) {
@@ -174,10 +184,19 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
                         assignmentId, orderIndex++, item.submission_type, questionPayload,
                         item.blockHtml || null, item.description || null
                     );
-                    imported++;
                 }
+                imported += bundleItems.length;
                 bundleInfo = { title: first.title, questionCount: bundleItems.length };
             } catch (e) {
+                // The assignment header and its child rows form one logical
+                // import. If a child insert fails, remove the header and any
+                // children already created instead of exposing a partial task.
+                if (assignmentId !== null) {
+                    try {
+                        await db.run(`DELETE FROM assignment_questions WHERE assignment_id = ?`, assignmentId);
+                        await db.run(`DELETE FROM assignments WHERE id = ? AND school_id = ?`, assignmentId, user.school_id);
+                    } catch { /* preserve the original import failure */ }
+                }
                 for (const item of bundleItems) {
                     skipped.push({ index: item.index, reason: e instanceof Response ? "بدون دسترسی یا مالکیت لازم روی این کلاس/درس" : "خطای نامشخص هنگام ثبت تکلیف چندسؤالی" });
                 }

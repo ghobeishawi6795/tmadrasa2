@@ -49,48 +49,47 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     if (existing) throw errors.conflict("این نام کاربری قبلاً استفاده شده — یک نام کاربری دیگر انتخاب کنید");
 
     const passwordHash = await hashPassword(body.password);
-    let newUserId = null;
-    let studentId = null;
-    try {
-        const userResult = await db.run(
-            `INSERT INTO users (school_id, username, password_hash, full_name, phone)
-             VALUES (?, ?, ?, ?, ?)`,
-            user.school_id, body.username, passwordHash, body.full_name, body.phone || null
-        );
-        newUserId = userResult.meta.last_row_id;
+    const studentRole = await db.first(`SELECT id FROM roles WHERE key = 'student'`);
 
-        const studentResult = await db.run(
-            `INSERT INTO students (user_id, school_id, student_code) VALUES (?, ?, ?)`,
-            newUserId, user.school_id, body.student_code || null
-        );
-        studentId = studentResult.meta.last_row_id;
+    // BUGFIX: this used to be 4 separate INSERTs with manual cleanup-on-error
+    // (D1 can't bind a generated id into a later statement before it exists),
+    // which meant a mid-sequence DB failure could still leave a half-created
+    // person if the cleanup itself failed. Fixed properly now: every
+    // dependent id is resolved via a SQL subquery keyed on the just-checked
+    // -unique `username` instead of a JS-bound value, so all 4 statements can
+    // go through db.batch() as ONE real D1 transaction -- either all of them
+    // land, or (on any failure, e.g. a race on the username uniqueness check
+    // above) none of them do. No manual rollback needed anymore.
+    await db.batch([
+        {
+            sql: `INSERT INTO users (school_id, username, password_hash, full_name, phone)
+                  VALUES (?, ?, ?, ?, ?)`,
+            params: [user.school_id, body.username, passwordHash, body.full_name, body.phone || null],
+        },
+        {
+            sql: `INSERT INTO students (user_id, school_id, student_code)
+                  VALUES ((SELECT id FROM users WHERE school_id = ? AND username = ?), ?, ?)`,
+            params: [user.school_id, body.username, user.school_id, body.student_code || null],
+        },
+        {
+            sql: `INSERT INTO user_roles (user_id, role_id, school_id)
+                  VALUES ((SELECT id FROM users WHERE school_id = ? AND username = ?), ?, ?)`,
+            params: [user.school_id, body.username, studentRole.id, user.school_id],
+        },
+        {
+            sql: `INSERT INTO class_students (class_id, student_id, school_id)
+                  VALUES (?, (SELECT id FROM students WHERE user_id = (SELECT id FROM users WHERE school_id = ? AND username = ?)), ?)`,
+            params: [cls.id, user.school_id, body.username, user.school_id],
+        },
+    ]);
 
-        const studentRole = await db.first(`SELECT id FROM roles WHERE key = 'student'`);
-        await db.run(
-            `INSERT INTO user_roles (user_id, role_id, school_id) VALUES (?, ?, ?)`,
-            newUserId, studentRole.id, user.school_id
-        );
-
-        await db.run(
-            `INSERT INTO class_students (class_id, student_id, school_id) VALUES (?, ?, ?)`,
-            cls.id, studentId, user.school_id
-        );
-    } catch (e) {
-        // These inserts depend on each other's generated ids, so D1 can't run
-        // them as one atomic transaction -- if anything after the `users`
-        // row failed, clean up everything we already created ourselves.
-        // Otherwise the username is stuck "taken" forever with no student to
-        // show for it (exactly what happened with a partial "ahmad2" row).
-        if (studentId) {
-            await db.run(`DELETE FROM class_students WHERE student_id = ?`, studentId).catch(() => {});
-            await db.run(`DELETE FROM students WHERE id = ?`, studentId).catch(() => {});
-        }
-        if (newUserId) {
-            await db.run(`DELETE FROM user_roles WHERE user_id = ?`, newUserId).catch(() => {});
-            await db.run(`DELETE FROM users WHERE id = ?`, newUserId).catch(() => {});
-        }
-        throw e;
-    }
+    const created_ = await db.first(
+        `SELECT u.id as user_id, s.id as student_id FROM users u JOIN students s ON s.user_id = u.id
+          WHERE u.school_id = ? AND u.username = ?`,
+        user.school_id, body.username
+    );
+    const newUserId = created_.user_id;
+    const studentId = created_.student_id;
 
     // best-effort: a logging failure here must never make an already-successful
     // registration look like it failed to the person who just submitted the form

@@ -13,7 +13,7 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     // teachers/students management is: implicitly admin-only in practice via
     // the front-end, but explicitly here via students.view (broadest "view
     // people" permission this school issues teachers/admins).
-    await requirePermission(env, user, "students.view");
+    await requirePermission(env, user, "parents.view");
     const db = q(env);
     const rows = await db.all(
         `SELECT p.id, u.id as user_id, u.full_name, u.username, u.is_active
@@ -39,39 +39,37 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     if (existing) throw errors.conflict("این نام کاربری قبلاً استفاده شده — یک نام کاربری دیگر انتخاب کنید");
 
     const passwordHash = await hashPassword(body.password);
-    let newUserId = null;
-    let parentId = null;
-    try {
-        const userResult = await db.run(
-            `INSERT INTO users (school_id, username, password_hash, full_name, phone)
-             VALUES (?, ?, ?, ?, ?)`,
-            user.school_id, body.username, passwordHash, body.full_name, body.phone || null
-        );
-        newUserId = userResult.meta.last_row_id;
+    const parentRole = await db.first(`SELECT id FROM roles WHERE key = 'parent'`);
 
-        const parentResult = await db.run(
-            `INSERT INTO parents (user_id, school_id) VALUES (?, ?)`,
-            newUserId, user.school_id
-        );
-        parentId = parentResult.meta.last_row_id;
+    // BUGFIX: see admin/students.js for the full rationale -- switched from
+    // 3 dependent INSERTs + manual cleanup-on-error to one real db.batch()
+    // transaction, with each dependent id resolved via a subquery on the
+    // just-checked-unique `username` instead of a JS-bound generated id.
+    await db.batch([
+        {
+            sql: `INSERT INTO users (school_id, username, password_hash, full_name, phone)
+                  VALUES (?, ?, ?, ?, ?)`,
+            params: [user.school_id, body.username, passwordHash, body.full_name, body.phone || null],
+        },
+        {
+            sql: `INSERT INTO parents (user_id, school_id)
+                  VALUES ((SELECT id FROM users WHERE school_id = ? AND username = ?), ?)`,
+            params: [user.school_id, body.username, user.school_id],
+        },
+        {
+            sql: `INSERT INTO user_roles (user_id, role_id, school_id)
+                  VALUES ((SELECT id FROM users WHERE school_id = ? AND username = ?), ?, ?)`,
+            params: [user.school_id, body.username, parentRole.id, user.school_id],
+        },
+    ]);
 
-        const parentRole = await db.first(`SELECT id FROM roles WHERE key = 'parent'`);
-        await db.run(
-            `INSERT INTO user_roles (user_id, role_id, school_id) VALUES (?, ?, ?)`,
-            newUserId, parentRole.id, user.school_id
-        );
-    } catch (e) {
-        // see admin/students.js for why this cleanup exists: these inserts
-        // depend on each other's generated ids so D1 can't run them as one
-        // atomic transaction, and an orphaned `users` row would otherwise
-        // keep the username permanently stuck as "taken".
-        if (parentId) await db.run(`DELETE FROM parents WHERE id = ?`, parentId).catch(() => {});
-        if (newUserId) {
-            await db.run(`DELETE FROM user_roles WHERE user_id = ?`, newUserId).catch(() => {});
-            await db.run(`DELETE FROM users WHERE id = ?`, newUserId).catch(() => {});
-        }
-        throw e;
-    }
+    const created_ = await db.first(
+        `SELECT u.id as user_id, p.id as parent_id FROM users u JOIN parents p ON p.user_id = u.id
+          WHERE u.school_id = ? AND u.username = ?`,
+        user.school_id, body.username
+    );
+    const newUserId = created_.user_id;
+    const parentId = created_.parent_id;
 
     await writeAudit(env, {
         schoolId: user.school_id, actorUserId: user.id, action: "parent.create",

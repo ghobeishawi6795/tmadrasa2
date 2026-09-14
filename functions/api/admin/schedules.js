@@ -32,7 +32,10 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const body = await readJson(request);
     requireFields(body, ["class_id", "subject_id", "teacher_id", "day_of_week", "start_time", "end_time"]);
 
-    if (body.day_of_week < 0 || body.day_of_week > 6) throw errors.validation("day_of_week باید بین ۰ تا ۶ باشد");
+    if (!Number.isInteger(Number(body.day_of_week)) || Number(body.day_of_week) < 0 || Number(body.day_of_week) > 6) throw errors.validation("day_of_week باید بین ۰ تا ۶ باشد");
+    const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
+    if (typeof body.start_time !== "string" || typeof body.end_time !== "string" || !timeRe.test(body.start_time) || !timeRe.test(body.end_time)) throw errors.validation("فرمت ساعت باید HH:MM باشد");
+    if (body.start_time >= body.end_time) throw errors.validation("ساعت پایان باید بعد از ساعت شروع باشد");
 
     const db = q(env);
 
@@ -47,7 +50,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const result = await db.run(
         `INSERT INTO schedules (school_id, class_id, subject_id, teacher_id, day_of_week, start_time, end_time)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        user.school_id, cls.id, subject.id, teacher.id, body.day_of_week, body.start_time, body.end_time
+        user.school_id, cls.id, subject.id, teacher.id, Number(body.day_of_week), body.start_time, body.end_time
     );
 
     await writeAudit(env, {

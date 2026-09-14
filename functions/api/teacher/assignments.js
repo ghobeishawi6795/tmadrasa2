@@ -47,9 +47,13 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     requireFields(body, ["class_id", "subject_id", "title", "due_at"]);
 
     const submissionType = body.submission_type || "text";
-    if (!SUBMISSION_TYPES.includes(submissionType)) {
-        throw errors.validation(`نوع پاسخ باید یکی از ${SUBMISSION_TYPES.join("/")} باشد`);
-    }
+    if (!SUBMISSION_TYPES.includes(submissionType)) throw errors.validation(`نوع پاسخ باید یکی از ${SUBMISSION_TYPES.join("/")} باشد`);
+    const maxAttempts = Number(body.max_attempts ?? 1);
+    const maxScore = Number(body.max_score ?? 20);
+    if (!Number.isInteger(maxAttempts) || maxAttempts < 1) throw errors.validation("max_attempts باید عدد صحیح مثبت باشد");
+    if (!Number.isFinite(maxScore) || maxScore <= 0) throw errors.validation("max_score باید عدد مثبت باشد");
+    const dueAt = new Date(body.due_at);
+    if (Number.isNaN(dueAt.getTime())) throw errors.validation("تاریخ مهلت تکلیف نامعتبر است");
 
     let questionPayload = null;
     if (AUTO_GRADED_TYPES.includes(submissionType)) {
@@ -77,8 +81,8 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
                                    due_at, allow_late, max_attempts, max_score, submission_type, question_payload, chapter_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         user.school_id, body.class_id, body.subject_id, teacher.id, body.title,
-        body.description || null, body.due_at, body.allow_late ? 1 : 0,
-        body.max_attempts || 1, body.max_score || 20, submissionType, questionPayload, chapterId
+        body.description || null, dueAt.toISOString(), body.allow_late ? 1 : 0,
+        maxAttempts, maxScore, submissionType, questionPayload, chapterId
     );
     const assignmentId = result.meta.last_row_id;
 

@@ -3,7 +3,7 @@
 // POST -> create a question (with options for multiple_choice)
 import { q } from "../_shared/db.js";
 import { authenticate, requirePermission } from "../_shared/auth.js";
-import { getTeacherRecord } from "../_shared/ownership.js";
+import { getTeacherRecord, assertSubjectInSchool } from "../_shared/ownership.js";
 import { ok, created, errors } from "../_shared/response.js";
 import { requireFields, readJson, withErrorHandling, requireMaxLength } from "../_shared/validate.js";
 import { snapshotQuestionVersion } from "../_shared/question-versions.js";
@@ -48,22 +48,16 @@ function resolveVisibility(requested, current) {
 
 // Shared validation + normalization for the metadata fields (chapter/topic/
 // explanation/tags/difficulty) -- same fields for create and update.
-function readMetadata(body) {
-    if (body.difficulty && !VALID_DIFFICULTIES.includes(body.difficulty)) {
-        throw errors.validation("سطح سختی نامعتبر است");
-    }
-    requireMaxLength(body.chapter, 200, "فصل");
-    requireMaxLength(body.topic, 200, "مبحث");
-    requireMaxLength(body.explanation, 5000, "توضیح پاسخ");
-    requireMaxLength(body.tags, 500, "برچسب‌ها");
-
+function readMetadata(body, current = null) {
+    if (body.difficulty !== undefined && body.difficulty !== null && body.difficulty !== "" && !VALID_DIFFICULTIES.includes(body.difficulty)) throw errors.validation("سطح سختی نامعتبر است");
+    requireMaxLength(body.chapter, 200, "فصل"); requireMaxLength(body.topic, 200, "مبحث"); requireMaxLength(body.explanation, 5000, "توضیح پاسخ"); requireMaxLength(body.tags, 500, "برچسب‌ها");
+    const value = (key, normalize) => Object.prototype.hasOwnProperty.call(body, key) ? normalize(body[key]) : (current ? current[key] : undefined);
     return {
-        chapter: body.chapter || null,
-        topic: body.topic || null,
-        explanation: body.explanation || null,
-        // stored as comma-separated text -- trims stray whitespace around each tag
-        tags: Array.isArray(body.tags) ? body.tags.map(t => String(t).trim()).filter(Boolean).join(",") : (body.tags || null),
-        difficulty: body.difficulty || null,
+        chapter: value("chapter", v => v ? String(v).trim() : null),
+        topic: value("topic", v => v ? String(v).trim() : null),
+        explanation: value("explanation", v => v ? String(v) : null),
+        tags: value("tags", v => Array.isArray(v) ? v.map(t => String(t).trim()).filter(Boolean).join(",") : (v ? String(v) : null)),
+        difficulty: value("difficulty", v => v || null),
     };
 }
 
@@ -85,10 +79,15 @@ export async function createQuestionRecord(env, { schoolId, teacherId, body }) {
         if (!Array.isArray(body.options) || body.options.length < 2) {
             throw errors.validation("سؤال چندگزینه‌ای باید حداقل دو گزینه داشته باشد");
         }
+        if (body.options.some(o => typeof o.is_correct !== "boolean")) throw errors.validation("is_correct باید boolean باشد");
         const correctCount = body.options.filter(o => o.is_correct).length;
         if (correctCount !== 1) throw errors.validation("دقیقاً یک گزینه صحیح باید مشخص شود");
     }
     const meta = readMetadata(body);
+    if (body.subject_id !== undefined && body.subject_id !== null && body.subject_id !== "") {
+        await assertSubjectInSchool(env, body.subject_id, schoolId);
+    }
+    if (body.type === "true_false" && typeof body.correct_boolean !== "boolean") throw errors.validation("correct_boolean باید boolean باشد");
     // BUGFIX: nothing previously stopped a fill_blank question with
     // grading_mode "auto" (the default) from being saved with an empty
     // correct_text -- exam-attempt.js's grading then finds an empty accepted-
@@ -201,16 +200,23 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     // attach options for multiple_choice questions, and whether it's been
     // used in an exam yet (informational only -- editing is always allowed,
     // see onRequestPut)
-    const results = [];
-    for (const question of questions.results) {
-        if (question.type === "multiple_choice") {
-            const opts = await db.all(`SELECT * FROM question_options WHERE question_id = ?`, question.id);
-            question.options = opts.results;
+    const ids = questions.results.map(question => question.id);
+    const optionsByQuestion = new Map();
+    const usedIds = new Set();
+    if (ids.length) {
+        const opts = await db.all(`SELECT * FROM question_options WHERE question_id IN (${ids.map(() => "?").join(",")})`, ...ids);
+        for (const o of opts.results) {
+            if (!optionsByQuestion.has(o.question_id)) optionsByQuestion.set(o.question_id, []);
+            optionsByQuestion.get(o.question_id).push(o);
         }
-        const used = await db.first(`SELECT 1 FROM exam_questions WHERE question_id = ?`, question.id);
-        question.used_in_exam = !!used;
-        results.push(question);
+        const used = await db.all(`SELECT DISTINCT question_id FROM exam_questions WHERE question_id IN (${ids.map(() => "?").join(",")})`, ...ids);
+        for (const row of used.results) usedIds.add(row.question_id);
     }
+    const results = questions.results.map(question => {
+        if (question.type === "multiple_choice") question.options = optionsByQuestion.get(question.id) || [];
+        question.used_in_exam = usedIds.has(question.id);
+        return question;
+    });
     return ok(results);
 });
 
@@ -265,11 +271,16 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
         if (!Array.isArray(body.options) || body.options.length < 2) {
             throw errors.validation("سؤال چندگزینه‌ای باید حداقل دو گزینه داشته باشد");
         }
+        if (body.options.some(o => typeof o.is_correct !== "boolean")) throw errors.validation("is_correct باید boolean باشد");
         const correctCount = body.options.filter(o => o.is_correct).length;
         if (correctCount !== 1) throw errors.validation("دقیقاً یک گزینه صحیح باید مشخص شود");
     }
-    const meta = readMetadata(body);
-    const gradingMode = resolveGradingMode(type, body.grading_mode);
+    const meta = readMetadata(body, question);
+    const finalSubjectId = body.subject_id === undefined ? question.subject_id : (body.subject_id || null);
+    if (finalSubjectId !== null) await assertSubjectInSchool(env, finalSubjectId, user.school_id);
+    if (type === "true_false" && body.correct_boolean !== undefined && typeof body.correct_boolean !== "boolean") throw errors.validation("correct_boolean باید boolean باشد");
+    if (type === "numeric" && body.correct_numeric !== undefined && (!Number.isFinite(Number(body.correct_numeric)))) throw errors.validation("correct_numeric نامعتبر است");
+    const gradingMode = type === "fill_blank" && body.grading_mode === undefined ? question.grading_mode : resolveGradingMode(type, body.grading_mode);
     if (type === "fill_blank" && gradingMode === "auto" && !(body.correct_text && String(body.correct_text).trim())) {
         throw errors.validation("برای جای‌خالی با تصحیح خودکار، پاسخ صحیح الزامی است (یا نحوه‌ی تصحیح را «دستی» انتخاب کنید)");
     }
@@ -282,10 +293,10 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
                 visibility = COALESCE(?, visibility)
           WHERE id = ?`,
         body.text, body.subject_id === undefined ? question.subject_id : (body.subject_id || null),
-        type === "true_false" ? (body.correct_boolean ? 1 : 0) : null,
-        type === "numeric" ? body.correct_numeric : null,
-        type === "numeric" ? (body.numeric_tolerance || 0) : null,
-        (type === "short_answer" || type === "long_answer" || type === "fill_blank") ? (body.correct_text || null) : null,
+        type === "true_false" ? (body.correct_boolean === undefined ? question.correct_boolean : (body.correct_boolean ? 1 : 0)) : null,
+        type === "numeric" ? (body.correct_numeric === undefined ? question.correct_numeric : Number(body.correct_numeric)) : null,
+        type === "numeric" ? (body.numeric_tolerance === undefined ? (question.numeric_tolerance || 0) : Number(body.numeric_tolerance || 0)) : null,
+        (type === "short_answer" || type === "long_answer" || type === "fill_blank") ? (body.correct_text === undefined ? question.correct_text : (body.correct_text || null)) : null,
         meta.chapter, meta.topic, meta.explanation, meta.tags, meta.difficulty,
         gradingMode,
         type === "custom_html" ? body.custom_html : null,
@@ -311,7 +322,6 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     await db.run(`UPDATE questions SET version = version + 1 WHERE id = ?`, question.id);
     await snapshotQuestionVersion(env, question.id);
 
-    const finalSubjectId = body.subject_id === undefined ? question.subject_id : (body.subject_id || null);
     if (meta.chapter && finalSubjectId) {
         await upsertChapterFromText(env, { schoolId: user.school_id, teacherId: teacher.id, subjectId: finalSubjectId, chapterName: meta.chapter });
     }

@@ -35,6 +35,15 @@ export async function assertClassOwnedByTeacher(env, classId, teacherId, schoolI
     if (!row) throw errors.forbidden("این کلاس متعلق به شما نیست");
 }
 
+export async function assertSubjectInSchool(env, subjectId, schoolId) {
+    const db = q(env);
+    const row = await db.first(
+        `SELECT 1 FROM subjects WHERE id = ? AND school_id = ?`,
+        subjectId, schoolId
+    );
+    if (!row) throw errors.forbidden("این درس متعلق به مدرسه شما نیست");
+}
+
 export async function assertTeacherTeachesSubjectInClass(env, teacherId, classId, subjectId, schoolId) {
     const db = q(env);
     const row = await db.first(

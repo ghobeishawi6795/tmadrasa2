@@ -62,11 +62,16 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     if (new Date() < new Date(exam.start_at)) throw errors.forbidden("آزمون هنوز شروع نشده است");
     if (new Date() > new Date(exam.end_at)) throw errors.forbidden("زمان آزمون به پایان رسیده است");
 
-    const attemptsCount = await db.first(
-        `SELECT COUNT(*) as c FROM exam_attempts WHERE exam_id = ? AND student_id = ?`,
+    const attemptState = await db.first(
+        `SELECT COUNT(*) as c, COALESCE(MAX(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END), 0) as has_in_progress
+           FROM exam_attempts WHERE exam_id = ? AND student_id = ?`,
         exam.id, student.id
     );
-    if (attemptsCount.c >= exam.max_attempts) {
+    // An existing in-progress attempt must remain readable so the student can
+    // resume it. The previous check counted that attempt against max_attempts
+    // and consequently made the normal max_attempts=1 flow fail immediately
+    // after /exam-attempt?action=start created the attempt.
+    if (attemptState.c >= exam.max_attempts && !attemptState.has_in_progress) {
         throw errors.forbidden("تعداد دفعات مجاز شرکت در این آزمون به پایان رسیده است");
     }
 

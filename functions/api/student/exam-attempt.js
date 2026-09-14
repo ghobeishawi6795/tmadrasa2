@@ -89,7 +89,9 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
         const attempt = await loadOwnAttempt(db, body.attempt_id, student.id);
         if (attempt.status !== "in_progress") throw errors.forbidden("این Attempt دیگر قابل ویرایش نیست");
 
-        const exam = await db.first(`SELECT * FROM exams WHERE id = ?`, attempt.exam_id);
+        const exam = await db.first(`SELECT * FROM exams WHERE id = ? AND school_id = ? AND deleted_at IS NULL`, attempt.exam_id, user.school_id);
+        if (!exam) throw errors.notFound("آزمون پیدا نشد");
+        if (exam.status !== "published") throw errors.forbidden("این آزمون بسته شده و دیگر قابل پاسخ‌گویی نیست");
         assertWithinAttemptDeadline(attempt, exam);
 
         // question must belong to this exam — prevents submitting a foreign question_id

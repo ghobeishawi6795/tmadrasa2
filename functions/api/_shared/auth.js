@@ -26,6 +26,10 @@ export async function authenticate(request, env) {
         `SELECT * FROM users WHERE id = ? AND deleted_at IS NULL`, session.user_id
     );
     if (!user || !user.is_active) throw errors.unauthorized("کاربر فعال نیست");
+    if (user.school_id !== 0) {
+        const school = await db.first(`SELECT active FROM schools WHERE id = ?`, user.school_id);
+        if (!school || !school.active) throw errors.unauthorized("مدرسه غیرفعال شده است");
+    }
 
     const roleRows = await db.all(
         `SELECT r.key FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ?`,

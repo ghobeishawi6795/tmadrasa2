@@ -47,22 +47,29 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     requireFields(body, ["student_id", "class_id", "subject_id", "score", "max_score"]);
 
     if (!VALID_SOURCES.includes(body.source || "manual")) throw errors.validation("source نامعتبر است");
-    if (body.max_score <= 0) throw errors.validation("max_score باید مثبت باشد");
-    if (body.score < 0 || body.score > body.max_score) {
-        throw errors.validation(`نمره باید بین ۰ و ${body.max_score} باشد`);
-    }
+    const maxScore = Number(body.max_score);
+    const score = Number(body.score);
+    const weight = Number(body.weight ?? 1);
+    if (!Number.isFinite(maxScore) || maxScore <= 0) throw errors.validation("max_score باید عدد مثبت باشد");
+    if (!Number.isFinite(score) || score < 0 || score > maxScore) throw errors.validation(`نمره باید بین ۰ و ${maxScore} باشد`);
+    if (!Number.isFinite(weight) || weight <= 0) throw errors.validation("weight باید عدد مثبت باشد");
 
     // teacher must actually teach this subject in this class, AND the student must be in it
     await assertTeacherCanGradeStudent(env, teacher.id, body.student_id, body.class_id, body.subject_id, user.school_id);
 
     const db = q(env);
+    if (body.grade_period_id !== undefined && body.grade_period_id !== null) {
+        const period = await db.first(`SELECT 1 FROM grade_periods WHERE id = ? AND school_id = ?`, body.grade_period_id, user.school_id);
+        if (!period) throw errors.validation("دوره نمره معتبر نیست");
+    }
+
     const result = await db.run(
         `INSERT INTO grades (school_id, student_id, subject_id, grade_period_id, teacher_id,
                               source, source_id, score, max_score, weight, feedback)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         user.school_id, body.student_id, body.subject_id, body.grade_period_id || null, teacher.id,
-        body.source || "manual", body.source_id || null, body.score, body.max_score,
-        body.weight ?? 1, body.feedback || null
+        body.source || "manual", body.source_id || null, score, maxScore,
+        weight, body.feedback || null
     );
 
     // notify the student + their parent(s) that a grade is ready
@@ -96,10 +103,10 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     if (!grade) throw errors.notFound("نمره پیدا نشد");
     if (grade.teacher_id !== teacher.id) throw errors.forbidden("این نمره را شما ثبت نکرده‌اید");
 
-    const newMax = body.max_score ?? grade.max_score;
-    const newScore = body.score ?? grade.score;
-    if (newMax <= 0) throw errors.validation("max_score باید مثبت باشد");
-    if (newScore < 0 || newScore > newMax) throw errors.validation(`نمره باید بین ۰ و ${newMax} باشد`);
+    const newMax = Number(body.max_score ?? grade.max_score);
+    const newScore = Number(body.score ?? grade.score);
+    if (!Number.isFinite(newMax) || newMax <= 0) throw errors.validation("max_score باید عدد مثبت باشد");
+    if (!Number.isFinite(newScore) || newScore < 0 || newScore > newMax) throw errors.validation(`نمره باید بین ۰ و ${newMax} باشد`);
 
     await db.run(
         `UPDATE grades SET score = ?, max_score = ?, feedback = ? WHERE id = ?`,

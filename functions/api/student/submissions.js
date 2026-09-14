@@ -66,13 +66,20 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
         answerDataToStore = JSON.stringify(body.answer_json); // store what the student actually chose, for review
     }
 
-    const insertResult = await db.run(
-        `INSERT INTO submissions (school_id, assignment_id, student_id, attempt_number, body, answer_data,
-                                   status, score, needs_manual_review, graded_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        user.school_id, assignment.id, student.id, attemptNumber,
-        body.body || null, answerDataToStore, status, score, needsManualReview, gradedAt
-    );
+    let insertResult;
+    try {
+        insertResult = await db.run(
+            `INSERT INTO submissions (school_id, assignment_id, student_id, attempt_number, body, answer_data,
+                                       status, score, needs_manual_review, graded_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            user.school_id, assignment.id, student.id, attemptNumber,
+            body.body || null, answerDataToStore, status, score, needsManualReview, gradedAt
+        );
+    } catch (e) {
+        const msg = String(e?.message || e);
+        if (/UNIQUE|constraint/i.test(msg)) throw errors.forbidden("ارسال همزمان یا تکراری تشخیص داده شد؛ دوباره تلاش کنید");
+        throw e;
+    }
 
     if (isAutoGraded) {
         await syncGradeFromSource(env, {

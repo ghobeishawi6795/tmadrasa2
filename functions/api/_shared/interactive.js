@@ -110,9 +110,16 @@ export function gradeInteractiveAnswer(assignment, studentAnswer) {
     if (assignment.submission_type === "match") {
         if (!Array.isArray(studentAnswer?.matches)) throw errors.validation("فرمت پاسخ نامعتبر است");
         const correctByLeft = Object.fromEntries(payload.pairs.map(p => [p.left_id, p.right_id]));
+        const validRightIds = new Set(payload.pairs.map(p => p.right_id));
+        const seenLeft = new Set();
+        const seenRight = new Set();
         let correctCount = 0;
         for (const m of studentAnswer.matches) {
-            if (correctByLeft[m.left_id] && correctByLeft[m.left_id] === m.right_id) correctCount++;
+            if (!m || typeof m.left_id !== "string" || typeof m.right_id !== "string") throw errors.validation("فرمت پاسخ تطبیقی نامعتبر است");
+            if (!Object.prototype.hasOwnProperty.call(correctByLeft, m.left_id) || !validRightIds.has(m.right_id)) throw errors.validation("یکی از شناسه‌های پاسخ نامعتبر است");
+            if (seenLeft.has(m.left_id) || seenRight.has(m.right_id)) throw errors.validation("هر گزینه فقط یک‌بار می‌تواند استفاده شود");
+            seenLeft.add(m.left_id); seenRight.add(m.right_id);
+            if (correctByLeft[m.left_id] === m.right_id) correctCount++;
         }
         const total = payload.pairs.length;
         return { score: Math.round((correctCount / total) * maxScore * 100) / 100, maxScore, correctCount, totalCount: total };
@@ -121,9 +128,16 @@ export function gradeInteractiveAnswer(assignment, studentAnswer) {
     if (assignment.submission_type === "drag_drop") {
         if (!Array.isArray(studentAnswer?.placements)) throw errors.validation("فرمت پاسخ نامعتبر است");
         const correctByItem = Object.fromEntries(payload.items.map(it => [it.item_id, it.bucket_index]));
+        const validBucketIndexes = new Set(payload.buckets.map((_, i) => i));
+        const seenItems = new Set();
         let correctCount = 0;
         for (const p of studentAnswer.placements) {
-            if (correctByItem[p.item_id] !== undefined && correctByItem[p.item_id] === Number(p.bucket_index)) correctCount++;
+            if (!p || typeof p.item_id !== "string") throw errors.validation("فرمت پاسخ دسته‌بندی نامعتبر است");
+            const bucketIndex = Number(p.bucket_index);
+            if (!Object.prototype.hasOwnProperty.call(correctByItem, p.item_id) || !Number.isInteger(bucketIndex) || !validBucketIndexes.has(bucketIndex)) throw errors.validation("یکی از شناسه‌ها یا دسته‌های پاسخ نامعتبر است");
+            if (seenItems.has(p.item_id)) throw errors.validation("هر آیتم فقط یک‌بار می‌تواند ارسال شود");
+            seenItems.add(p.item_id);
+            if (correctByItem[p.item_id] === bucketIndex) correctCount++;
         }
         const total = payload.items.length;
         return { score: Math.round((correctCount / total) * maxScore * 100) / 100, maxScore, correctCount, totalCount: total };

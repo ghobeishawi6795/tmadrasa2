@@ -22,7 +22,11 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
            FROM exams e
            JOIN subjects s ON s.id = e.subject_id
            JOIN class_students cs ON cs.class_id = e.class_id AND cs.student_id = ?
-           LEFT JOIN exam_attempts att ON att.exam_id = e.id AND att.student_id = ?
+           LEFT JOIN exam_attempts att ON att.id = (
+                    SELECT a2.id FROM exam_attempts a2
+                     WHERE a2.exam_id = e.id AND a2.student_id = ?
+                     ORDER BY a2.attempt_number DESC, a2.id DESC LIMIT 1
+                )
           WHERE e.deleted_at IS NULL AND e.school_id = ? AND e.status IN ('published','closed','archived')
           ORDER BY e.start_at DESC`,
         studentId, studentId, user.school_id

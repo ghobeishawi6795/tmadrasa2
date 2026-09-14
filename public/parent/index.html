@@ -378,7 +378,7 @@ async function renderSchedule() {
             <table>
                 <thead><tr><th>روز</th><th>ساعت</th><th>درس</th><th>معلم</th></tr></thead>
                 <tbody>
-                    ${schedule.map(s => `<tr><td>${DAYS[s.day_of_week] ?? s.day_of_week}</td><td>${s.start_time} - ${s.end_time}</td><td>${escapeHtml(s.subject_name)}</td><td>${escapeHtml(s.teacher_name)}</td></tr>`).join("") || `<tr><td colspan="4" style="text-align:center;color:var(--muted)">برنامه‌ای ثبت نشده</td></tr>`}
+                    ${schedule.map(s => `<tr><td>${DAYS[s.day_of_week] ?? s.day_of_week}</td><td>${escapeHtml(s.start_time)} - ${escapeHtml(s.end_time)}</td><td>${escapeHtml(s.subject_name)}</td><td>${escapeHtml(s.teacher_name)}</td></tr>`).join("") || `<tr><td colspan="4" style="text-align:center;color:var(--muted)">برنامه‌ای ثبت نشده</td></tr>`}
                 </tbody>
             </table>
         </div></div>

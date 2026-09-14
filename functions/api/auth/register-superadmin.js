@@ -17,9 +17,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const body = await readJson(request);
     requireFields(body, ["full_name", "username", "password"]);
 
-    if (body.password.length < 8) {
-        throw errors.validation("رمز عبور باید حداقل ۸ کاراکتر باشد");
-    }
+    if (typeof body.password !== "string" || body.password.length < 8) throw errors.validation("رمز عبور باید حداقل ۸ کاراکتر باشد");
 
     const db = q(env);
 
@@ -56,10 +54,16 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     );
     const userId = userResult.meta.last_row_id;
 
-    await db.run(
-        `INSERT INTO user_roles (user_id, role_id, school_id) VALUES (?, ?, ?)`,
-        userId, role.id, SYSTEM_SCHOOL_ID
-    );
+    try {
+        await db.run(
+            `INSERT INTO user_roles (user_id, role_id, school_id) VALUES (?, ?, ?)`,
+            userId, role.id, SYSTEM_SCHOOL_ID
+        );
+    } catch (e) {
+        await db.run(`DELETE FROM users WHERE id = ?`, userId).catch(() => {});
+        if (/super_admin already exists|UNIQUE|constraint/i.test(String(e?.message || e))) throw errors.forbidden("یک حساب سوپرادمین از قبل ساخته شده است");
+        throw e;
+    }
 
     await writeAudit(env, {
         schoolId: SYSTEM_SCHOOL_ID, actorUserId: userId, action: "superadmin.register",

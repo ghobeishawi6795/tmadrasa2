@@ -4,7 +4,6 @@ import { authenticate } from "../_shared/auth.js";
 import { getStudentRecord } from "../_shared/ownership.js";
 import { ok, errors } from "../_shared/response.js";
 import { withErrorHandling } from "../_shared/validate.js";
-import { getQuestionVersion } from "../_shared/question-versions.js";
 
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
@@ -46,8 +45,34 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
         );
 
         questions = [];
+        const legacyMcIds = rows.results.filter(r => r.type === "multiple_choice" && !r.pinned_version).map(r => r.question_id);
+        const legacyOptionsByQuestion = new Map();
+        if (legacyMcIds.length) {
+            const opts = await db.all(`SELECT * FROM question_options WHERE question_id IN (${legacyMcIds.map(() => "?").join(",")})`, ...legacyMcIds);
+            for (const o of opts.results) {
+                if (!legacyOptionsByQuestion.has(o.question_id)) legacyOptionsByQuestion.set(o.question_id, []);
+                legacyOptionsByQuestion.get(o.question_id).push(o);
+            }
+        }
+        // BUGFIX: this used to call getQuestionVersion() (one SELECT on
+        // question_versions) once per row inside the loop -- an N+1 on top
+        // of the already-batched legacy-options fetch above. Batch it the
+        // same way: one IN(...) query for every question_id that has a
+        // pinned_version, then look each row's exact (question_id, version)
+        // pair up in memory.
+        const pinnedQuestionIds = [...new Set(rows.results.filter(r => r.pinned_version).map(r => r.question_id))];
+        const snapshotByKey = new Map();
+        if (pinnedQuestionIds.length) {
+            const versionRows = await db.all(
+                `SELECT * FROM question_versions WHERE question_id IN (${pinnedQuestionIds.map(() => "?").join(",")})`,
+                ...pinnedQuestionIds
+            );
+            for (const v of versionRows.results) {
+                snapshotByKey.set(`${v.question_id}:${v.version}`, { ...v, options: v.options_json ? JSON.parse(v.options_json) : null });
+            }
+        }
         for (const row of rows.results) {
-            const snapshot = await getQuestionVersion(env, row.question_id, row.pinned_version);
+            const snapshot = row.pinned_version ? (snapshotByKey.get(`${row.question_id}:${row.pinned_version}`) || null) : null;
 
             let text, options, correctBoolean, correctNumeric, numericTolerance, correctText;
             if (snapshot) {
@@ -65,8 +90,7 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
                 numericTolerance = row.numeric_tolerance;
                 correctText = row.correct_text;
                 if (row.type === "multiple_choice") {
-                    const opts = await db.all(`SELECT * FROM question_options WHERE question_id = ?`, row.question_id);
-                    options = opts.results.map(o => ({ id: o.id, text: o.text, is_correct: !!o.is_correct }));
+                    options = (legacyOptionsByQuestion.get(row.question_id) || []).map(o => ({ id: o.id, text: o.text, is_correct: !!o.is_correct }));
                 }
             }
 

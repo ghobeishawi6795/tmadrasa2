@@ -10,6 +10,16 @@ import { ok, errors } from "../_shared/response.js";
 import { requireFields, readJson, withErrorHandling } from "../_shared/validate.js";
 import { ensureVersionSnapshot } from "../_shared/question-versions.js";
 
+// score must be a real positive number (no NaN/Infinity/string/negative/zero);
+// position just needs to be a finite integer (0 is valid, ordering only).
+function validateScoreAndPosition(rawScore, rawPosition) {
+    const score = Number(rawScore ?? 1);
+    const position = Number(rawPosition ?? 0);
+    if (!Number.isFinite(score) || score <= 0) throw errors.validation("نمره‌ی سؤال باید عدد مثبت باشد");
+    if (!Number.isInteger(position) || position < 0) throw errors.validation("موقعیت سؤال نامعتبر است");
+    return { score, position };
+}
+
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "exams.view");
@@ -42,7 +52,11 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
 
     const exam = await loadExamOwnedByTeacher(env, body.exam_id, teacher.id, user.school_id);
     if (exam.status !== "draft") throw errors.forbidden("فقط آزمون پیش‌نویس قابل ویرایش سؤال است");
-    await loadQuestionOwnedByTeacher(env, body.question_id, teacher.id, user.school_id);
+    const question = await loadQuestionOwnedByTeacher(env, body.question_id, teacher.id, user.school_id);
+    if (Number(question.subject_id) !== Number(exam.subject_id)) {
+        throw errors.validation("سؤال باید متعلق به همان درس آزمون باشد");
+    }
+    const { score, position } = validateScoreAndPosition(body.score, body.position);
 
     // pin the question's current version -- later edits to this question
     // won't affect this exam. ensureVersionSnapshot covers the case where
@@ -52,7 +66,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const db = q(env);
     await db.run(
         `INSERT INTO exam_questions (exam_id, question_id, position, score, pinned_version) VALUES (?, ?, ?, ?, ?)`,
-        exam.id, body.question_id, body.position ?? 0, body.score ?? 1, pinnedVersion
+        exam.id, body.question_id, position, score, pinnedVersion
     );
     return ok(null, "سؤال به آزمون اضافه شد");
 });
@@ -69,10 +83,13 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
 
     const db = q(env);
     // backend re-validates ordering/scores; never trusts client-only ordering blindly beyond this write
-    const statements = body.items.map(it => ({
-        sql: `UPDATE exam_questions SET position = ?, score = ? WHERE exam_id = ? AND question_id = ?`,
-        params: [it.position, it.score, exam.id, it.question_id],
-    }));
+    const statements = body.items.map(it => {
+        const { score, position } = validateScoreAndPosition(it.score, it.position);
+        return {
+            sql: `UPDATE exam_questions SET position = ?, score = ? WHERE exam_id = ? AND question_id = ?`,
+            params: [position, score, exam.id, it.question_id],
+        };
+    });
     await db.batch(statements);
     return ok(null, "ترتیب سؤالات به‌روزرسانی شد");
 });

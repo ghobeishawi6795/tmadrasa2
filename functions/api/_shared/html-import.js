@@ -43,12 +43,19 @@ function stripTags(html) {
 function sanitizeDecorativeHtml(html) {
     if (!html) return html;
     return html
-        .replace(/<script[\s\S]*?<\/script>/gi, "")
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+        .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, "")
+        .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, "")
+        .replace(/<embed\b[^>]*>/gi, "")
         .replace(/<link\b[^>]*>/gi, "")
+        .replace(/<base\b[^>]*>/gi, "")
+        .replace(/<meta\b[^>]*>/gi, "")
         .replace(/@import[^;]+;/gi, "")
-        .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
-        .replace(/\son\w+\s*=\s*'[^']*'/gi, "")
-        .replace(/javascript\s*:/gi, "blocked:");
+        .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+        .replace(/\b(?:href|src|action|formaction|poster|xlink:href)\s*=\s*(?:"\s*(?:javascript|vbscript|data):[^"]*"|'\s*(?:javascript|vbscript|data):[^']*'|\s*(?:javascript|vbscript|data):[^\s>]*)/gi, "")
+        .replace(/javascript\s*:/gi, "blocked:")
+        .replace(/vbscript\s*:/gi, "blocked:")
+        .replace(/data\s*:/gi, "blocked:");
 }
 
 // match/drag_drop questions already render through our own secure widget
@@ -63,7 +70,9 @@ function stripAnswerRevealingLists(html, submissionType) {
     return html
         .replace(/<ul\b[^>]*class="[^"]*\bq-pairs\b[^"]*"[^>]*>[\s\S]*?<\/ul>/gi, "")
         .replace(/<ul\b[^>]*class="[^"]*\bq-buckets\b[^"]*"[^>]*>[\s\S]*?<\/ul>/gi, "")
-        .replace(/<ul\b[^>]*class="[^"]*\bq-items\b[^"]*"[^>]*>[\s\S]*?<\/ul>/gi, "");
+        .replace(/<ul\b[^>]*class="[^"]*\bq-items\b[^"]*"[^>]*>[\s\S]*?<\/ul>/gi, "")
+        .replace(/<[^>]+\bdata-(?:left|right|bucket|correct|answer)(?:-index|-text)?\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)[^>]*>/gi, tag => tag.replace(/\sdata-(?:left|right|bucket|correct|answer)(?:-index|-text)?\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, ""))
+        .replace(/<(?:div|p|span|section|label)\b[^>]*class="[^"]*\bq-answer\b[^"]*"[^>]*>[\s\S]*?<\/(?:div|p|span|section|label)>/gi, "");
 }
 
 // Finds every top-level <div> whose class list includes "question" and

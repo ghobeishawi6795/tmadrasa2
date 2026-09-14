@@ -15,7 +15,7 @@
 //           reappears via the legacy-fallback merge in GET (nothing orphaned)
 import { q } from "../_shared/db.js";
 import { authenticate, requirePermission } from "../_shared/auth.js";
-import { getTeacherRecord } from "../_shared/ownership.js";
+import { getTeacherRecord, assertSubjectInSchool } from "../_shared/ownership.js";
 import { ok, created, errors } from "../_shared/response.js";
 import { requireFields, readJson, withErrorHandling, requireMaxLength } from "../_shared/validate.js";
 
@@ -83,6 +83,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     if (!name) throw errors.validation("نام فصل نمی‌تواند خالی باشد");
     requireMaxLength(name, 200, "نام فصل");
     requireMaxLength(body.description, 2000, "توضیحات فصل");
+    await assertSubjectInSchool(env, body.subject_id, user.school_id);
 
     const db = q(env);
     const existing = await db.first(
@@ -117,6 +118,7 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     const db = q(env);
     const chapter = await db.first(`SELECT * FROM chapters WHERE id = ? AND teacher_id = ?`, body.id, teacher.id);
     if (!chapter) throw errors.notFound("فصل پیدا نشد");
+    if (Number(chapter.school_id) !== Number(user.school_id)) throw errors.forbidden("این فصل متعلق به مدرسه شما نیست");
 
     let newName = chapter.name;
     if (body.name !== undefined) {

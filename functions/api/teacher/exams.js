@@ -11,6 +11,24 @@ import { requireFields, readJson, withErrorHandling } from "../_shared/validate.
 import { notifyUsers, getClassUserIds } from "../_shared/notify.js";
 import { writeAudit } from "../_shared/audit.js";
 
+const VALID_TYPES = ["quiz", "exam", "practice"];
+
+function validateExamTiming(body, fallback = {}) {
+    const startRaw = body.start_at ?? fallback.start_at;
+    const endRaw = body.end_at ?? fallback.end_at;
+    const durationRaw = body.duration_minutes ?? fallback.duration_minutes;
+    const attemptsRaw = body.max_attempts ?? fallback.max_attempts ?? 1;
+    const start = new Date(startRaw);
+    const end = new Date(endRaw);
+    const duration = Number(durationRaw);
+    const attempts = Number(attemptsRaw);
+    if (!startRaw || Number.isNaN(start.getTime()) || !endRaw || Number.isNaN(end.getTime()) || start >= end) throw errors.validation("زمان شروع و پایان آزمون نامعتبر است");
+    if (!Number.isInteger(duration) || duration <= 0) throw errors.validation("مدت آزمون باید عدد صحیح مثبت باشد");
+    if (!Number.isInteger(attempts) || attempts < 1) throw errors.validation("تعداد دفعات مجاز باید عدد صحیح مثبت باشد");
+    return { start, end, duration, attempts };
+}
+
+
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "exams.view");
@@ -38,10 +56,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const body = await readJson(request);
     requireFields(body, ["class_id", "subject_id", "title", "start_at", "end_at", "duration_minutes"]);
 
-    if (new Date(body.start_at) >= new Date(body.end_at)) {
-        throw errors.validation("زمان پایان باید بعد از زمان شروع باشد");
-    }
-    if (Number(body.duration_minutes) <= 0) throw errors.validation("مدت آزمون باید مثبت باشد");
+    const timing = validateExamTiming(body);
 
     await assertClassOwnedByTeacher(env, body.class_id, teacher.id, user.school_id);
     await assertTeacherTeachesSubjectInClass(env, teacher.id, body.class_id, body.subject_id, user.school_id);
@@ -64,7 +79,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`,
         user.school_id, body.class_id, body.subject_id, teacher.id, body.title,
         body.description || null, body.type || "quiz", body.start_at, body.end_at,
-        body.duration_minutes, body.max_attempts || 1, chapterId
+        timing.duration, timing.attempts, chapterId
     );
 
     return created({ id: result.meta.last_row_id }, "آزمون ساخته شد (پیش‌نویس)");
@@ -119,7 +134,13 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
         return ok(null, "آزمون بسته شد");
     }
 
-    // plain field update (draft only)
+    // Any ordinary field update is draft-only. The previous guard only blocked
+    // a subset of content fields, allowing published/closed exams to have their
+    // timing, duration, or attempt limit changed.
+    if (exam.status !== "draft") throw errors.forbidden("آزمون منتشرشده یا بسته‌شده قابل ویرایش نیست");
+    if (body.class_id !== undefined && Number(body.class_id) !== Number(exam.class_id)) throw errors.validation("تغییر کلاس آزمون در ویرایش مجاز نیست");
+    if (body.subject_id !== undefined && Number(body.subject_id) !== Number(exam.subject_id)) throw errors.validation("تغییر درس آزمون در ویرایش مجاز نیست");
+    const timing = validateExamTiming(body, exam);
     let chapterId = exam.chapter_id;
     if (hasChapterField) {
         chapterId = null;
@@ -138,7 +159,7 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
           WHERE id = ?`,
         body.title ?? exam.title, body.description ?? exam.description,
         body.start_at ?? exam.start_at, body.end_at ?? exam.end_at,
-        body.duration_minutes ?? exam.duration_minutes, body.max_attempts ?? exam.max_attempts,
+        timing.duration, timing.attempts,
         chapterId, exam.id
     );
     return ok(null, "آزمون به‌روزرسانی شد");

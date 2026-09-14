@@ -91,15 +91,16 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     );
     const priorByQ = Object.fromEntries(priorResults.results.map(r => [r.question_id, r]));
 
-    const safeQuestions = [];
-    for (const question of questions.results) {
-        let options = [];
-        if (question.type === "multiple_choice") {
-            const opts = await db.all(`SELECT * FROM question_options WHERE question_id = ?`, question.id);
-            options = opts.results;
+    const multipleChoiceIds = questions.results.filter(qr => qr.type === "multiple_choice").map(qr => qr.id);
+    const optionsByQuestion = new Map();
+    if (multipleChoiceIds.length) {
+        const opts = await db.all(`SELECT * FROM question_options WHERE question_id IN (${multipleChoiceIds.map(() => "?").join(",")})`, ...multipleChoiceIds);
+        for (const o of opts.results) {
+            if (!optionsByQuestion.has(o.question_id)) optionsByQuestion.set(o.question_id, []);
+            optionsByQuestion.get(o.question_id).push(o);
         }
-        safeQuestions.push(toSafeQuestion(question, options, priorByQ[question.id]));
     }
+    const safeQuestions = questions.results.map(question => toSafeQuestion(question, optionsByQuestion.get(question.id) || [], priorByQ[question.id]));
 
     return ok({ chapters, questions: safeQuestions });
 });

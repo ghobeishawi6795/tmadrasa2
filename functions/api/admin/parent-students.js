@@ -7,7 +7,7 @@ import { writeAudit } from "../_shared/audit.js";
 
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
-    await requirePermission(env, user, "students.view");
+    await requirePermission(env, user, "parent_students.view");
     const db = q(env);
     const rows = await db.all(
         `SELECT ps.parent_id, ps.student_id, up.full_name as parent_name, us.full_name as student_name

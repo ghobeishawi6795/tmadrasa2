@@ -58,48 +58,39 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
             if (existing) throw new Error(`نام‌کاربری «${row.username}» قبلاً استفاده شده`);
 
             const passwordHash = await hashPassword(row.password);
-            // BUGFIX: same "orphaned users row" issue already fixed in
-            // admin/students.js (single-add) -- these 4 inserts depend on
-            // each other's generated ids so D1 can't run them as one atomic
-            // transaction; without this try/catch, a failure partway through
-            // (e.g. class_students insert fails) left a real users row behind
-            // with that username permanently "taken" and no student to show
-            // for it. Same compensating-delete pattern as students.js.
-            let newUserId = null;
-            let studentId = null;
-            try {
-                const userResult = await db.run(
-                    `INSERT INTO users (school_id, username, password_hash, full_name) VALUES (?, ?, ?, ?)`,
-                    user.school_id, row.username, passwordHash, row.full_name
-                );
-                newUserId = userResult.meta.last_row_id;
+            // BUGFIX: same fix as admin/students.js (single-add) -- switched
+            // from 4 dependent INSERTs + manual cleanup-on-error to one real
+            // db.batch() transaction per row, with dependent ids resolved via
+            // a subquery on the just-checked-unique `username`. A failure
+            // partway through now rolls back that row's inserts atomically
+            // instead of relying on best-effort compensating deletes.
+            await db.batch([
+                {
+                    sql: `INSERT INTO users (school_id, username, password_hash, full_name) VALUES (?, ?, ?, ?)`,
+                    params: [user.school_id, row.username, passwordHash, row.full_name],
+                },
+                {
+                    sql: `INSERT INTO students (user_id, school_id, student_code)
+                          VALUES ((SELECT id FROM users WHERE school_id = ? AND username = ?), ?, ?)`,
+                    params: [user.school_id, row.username, user.school_id, row.student_code || null],
+                },
+                {
+                    sql: `INSERT INTO user_roles (user_id, role_id, school_id)
+                          VALUES ((SELECT id FROM users WHERE school_id = ? AND username = ?), ?, ?)`,
+                    params: [user.school_id, row.username, studentRole.id, user.school_id],
+                },
+                {
+                    sql: `INSERT INTO class_students (class_id, student_id, school_id)
+                          VALUES (?, (SELECT id FROM students WHERE user_id = (SELECT id FROM users WHERE school_id = ? AND username = ?)), ?)`,
+                    params: [cls.id, user.school_id, row.username, user.school_id],
+                },
+            ]);
 
-                const studentResult = await db.run(
-                    `INSERT INTO students (user_id, school_id, student_code) VALUES (?, ?, ?)`,
-                    newUserId, user.school_id, row.student_code || null
-                );
-                studentId = studentResult.meta.last_row_id;
-
-                await db.run(
-                    `INSERT INTO user_roles (user_id, role_id, school_id) VALUES (?, ?, ?)`,
-                    newUserId, studentRole.id, user.school_id
-                );
-
-                await db.run(
-                    `INSERT INTO class_students (class_id, student_id, school_id) VALUES (?, ?, ?)`,
-                    cls.id, studentId, user.school_id
-                );
-            } catch (e) {
-                if (studentId) {
-                    await db.run(`DELETE FROM class_students WHERE student_id = ?`, studentId).catch(() => {});
-                    await db.run(`DELETE FROM students WHERE id = ?`, studentId).catch(() => {});
-                }
-                if (newUserId) {
-                    await db.run(`DELETE FROM user_roles WHERE user_id = ?`, newUserId).catch(() => {});
-                    await db.run(`DELETE FROM users WHERE id = ?`, newUserId).catch(() => {});
-                }
-                throw e;
-            }
+            const createdRow = await db.first(
+                `SELECT s.id FROM users u JOIN students s ON s.user_id = u.id WHERE u.school_id = ? AND u.username = ?`,
+                user.school_id, row.username
+            );
+            const studentId = createdRow.id;
 
             created.push({ row: rowNum, id: studentId, username: row.username });
         } catch (e) {

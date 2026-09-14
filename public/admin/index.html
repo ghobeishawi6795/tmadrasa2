@@ -670,7 +670,7 @@ async function loadSchedule(classId) {
                     ${entries.map(s => `
                         <tr>
                             <td>${WEEKDAY_LABELS[s.day_of_week] ?? s.day_of_week}</td>
-                            <td>${s.start_time} - ${s.end_time}</td>
+                            <td>${escapeHtml(s.start_time)} - ${escapeHtml(s.end_time)}</td>
                             <td>${escapeHtml(s.subject_name)}</td><td>${escapeHtml(s.teacher_name)}</td>
                             <td><button class="secondary-btn" onclick="deleteScheduleEntry(${s.id}, ${classId})">حذف</button></td>
                         </tr>

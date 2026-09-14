@@ -64,10 +64,35 @@ export async function syncGradeFromSource(env, {
         return existing.id;
     }
 
-    const result = await db.run(
-        `INSERT INTO grades (school_id, student_id, subject_id, grade_period_id, teacher_id, source, source_id, score, max_score, weight, feedback)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
-        schoolId, studentId, subjectId, gradePeriodId, teacherId, source, sourceId, score, maxScore, feedback ?? null
-    );
-    return result.meta.last_row_id;
+    // BUGFIX: this SELECT-then-INSERT is not atomic on its own -- two
+    // concurrent syncs for the same (student, subject, source, source_id)
+    // could both see `existing` as null and both try to INSERT. A DB-level
+    // trigger (028_security_integrity.sql, trg_grades_unique_source) is the
+    // real fix and guarantees only one row ever lands; this catch just turns
+    // the trigger's ABORT into "someone else already synced this grade,
+    // fetch what's there" instead of letting a raw SQLite error bubble up as
+    // an unhandled 500 to whoever's request lost the race.
+    try {
+        const result = await db.run(
+            `INSERT INTO grades (school_id, student_id, subject_id, grade_period_id, teacher_id, source, source_id, score, max_score, weight, feedback)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+            schoolId, studentId, subjectId, gradePeriodId, teacherId, source, sourceId, score, maxScore, feedback ?? null
+        );
+        return result.meta.last_row_id;
+    } catch (e) {
+        if (/duplicate grade source/i.test(String(e?.message || e))) {
+            const winner = await db.first(
+                `SELECT id FROM grades WHERE student_id = ? AND subject_id = ? AND source = ? AND source_id = ?`,
+                studentId, subjectId, source, sourceId
+            );
+            if (winner) {
+                await db.run(
+                    `UPDATE grades SET score = ?, max_score = ?, feedback = ?, teacher_id = ?, grade_period_id = ? WHERE id = ?`,
+                    score, maxScore, feedback ?? null, teacherId, gradePeriodId, winner.id
+                );
+                return winner.id;
+            }
+        }
+        throw e;
+    }
 }

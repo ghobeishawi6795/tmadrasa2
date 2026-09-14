@@ -38,8 +38,14 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
         `SELECT * FROM assignment_questions WHERE assignment_id = ?`, assignment.id
     );
     const questionsById = new Map(questionRows.results.map(qr => [qr.id, qr]));
-    if (body.answers.length !== questionRows.results.length) {
-        throw errors.validation("پاسخ همه‌ی سؤال‌ها الزامی است");
+    if (body.answers.length !== questionRows.results.length) throw errors.validation("پاسخ همه‌ی سؤال‌ها الزامی است");
+    const submittedQuestionIds = body.answers.map(a => Number(a.assignment_question_id));
+    if (new Set(submittedQuestionIds).size !== submittedQuestionIds.length || submittedQuestionIds.some(id => !questionsById.has(id))) {
+        throw errors.validation("هر سؤال باید دقیقاً یک پاسخ داشته باشد");
+    }
+    const expectedQuestionIds = new Set(questionRows.results.map(qr => qr.id));
+    if (submittedQuestionIds.some(id => !expectedQuestionIds.has(id)) || expectedQuestionIds.size !== submittedQuestionIds.length) {
+        throw errors.validation("پاسخ همه‌ی سؤال‌های همین تکلیف الزامی است");
     }
 
     const existing = await db.first(
@@ -97,23 +103,28 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const finalScore = anyPending ? null : Math.round((autoTotal / totalWeight) * assignment.max_score * 100) / 100;
     const gradedAt = anyPending ? null : new Date().toISOString();
 
-    const subResult = await db.run(
-        `INSERT INTO submissions (school_id, assignment_id, student_id, attempt_number,
-                                   status, score, needs_manual_review, graded_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        user.school_id, assignment.id, student.id, attemptNumber,
-        status, finalScore, anyPending ? 1 : 0, gradedAt
-    );
-    const submissionId = subResult.meta.last_row_id;
+    let submissionId;
+    try {
+        const subResult = await db.run(
+            `INSERT INTO submissions (school_id, assignment_id, student_id, attempt_number,
+                                       status, score, needs_manual_review, graded_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            user.school_id, assignment.id, student.id, attemptNumber,
+            status, finalScore, anyPending ? 1 : 0, gradedAt
+        );
+        submissionId = subResult.meta.last_row_id;
 
-    for (const p of prepared) {
-        await db.run(
-            `INSERT INTO submission_answers
+        await db.batch(prepared.map(p => ({
+            sql: `INSERT INTO submission_answers
                 (submission_id, assignment_question_id, answer_data, score, max_score, needs_manual_review, graded_at)
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            submissionId, p.questionId, p.answerData, p.score, p.maxScore, p.needsManualReview,
-            p.needsManualReview ? null : new Date().toISOString()
-        );
+            params: [submissionId, p.questionId, p.answerData, p.score, p.maxScore, p.needsManualReview, p.needsManualReview ? null : new Date().toISOString()]
+        })));
+    } catch (e) {
+        if (submissionId) await db.run(`DELETE FROM submissions WHERE id = ?`, submissionId).catch(() => {});
+        const msg = String(e?.message || e);
+        if (/UNIQUE|constraint/i.test(msg)) throw errors.forbidden("ارسال همزمان یا تکراری تشخیص داده شد؛ دوباره تلاش کنید");
+        throw e;
     }
 
     if (!anyPending) {
