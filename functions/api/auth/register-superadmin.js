@@ -23,6 +23,23 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
 
     const db = q(env);
 
+    const role = await db.first(`SELECT id FROM roles WHERE key = 'super_admin'`);
+    if (!role) throw errors.server("نقش سوپرادمین در پایگاه‌داده تعریف نشده — مایگریشن ۰۱۵ اجرا نشده است");
+
+    // BUGFIX: this endpoint has no auth gate at all (by design -- it's the
+    // very first bootstrap step, before any account exists to authenticate
+    // as), and previously only checked username uniqueness -- meaning it
+    // stayed open to creating unlimited super_admin accounts forever,
+    // including after the user deletes register-superadmin.html, since the
+    // API route itself is still deployed and reachable directly. Now locked
+    // shut the moment ANY super_admin already exists.
+    const existingSuperAdmin = await db.first(
+        `SELECT 1 FROM user_roles WHERE role_id = ? LIMIT 1`, role.id
+    );
+    if (existingSuperAdmin) {
+        throw errors.forbidden("یک حساب سوپرادمین از قبل ساخته شده — این مسیر دیگر باز نیست");
+    }
+
     const existing = await db.first(
         `SELECT id FROM users WHERE school_id = ? AND username = ?`,
         SYSTEM_SCHOOL_ID, body.username
@@ -38,9 +55,6 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
         body.phone || null, body.email || null
     );
     const userId = userResult.meta.last_row_id;
-
-    const role = await db.first(`SELECT id FROM roles WHERE key = 'super_admin'`);
-    if (!role) throw errors.server("نقش سوپرادمین در پایگاه‌داده تعریف نشده — مایگریشن ۰۱۵ اجرا نشده است");
 
     await db.run(
         `INSERT INTO user_roles (user_id, role_id, school_id) VALUES (?, ?, ?)`,

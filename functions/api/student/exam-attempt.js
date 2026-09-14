@@ -18,6 +18,28 @@ async function loadOwnAttempt(db, attemptId, studentId) {
     return attempt;
 }
 
+// BUGFIX: `start` used to be the ONLY place a time check ever happened --
+// `answer` (and by extension a student just never calling `submit`) had no
+// re-check at all, so a student who started within the valid window could
+// keep saving new answers indefinitely afterwards, no matter how long the
+// exam's own duration_minutes/end_at said it should last. The real deadline
+// for a given attempt is whichever comes first: the exam's own end_at
+// (a hard wall-clock cutoff shared by the whole class), or this attempt's
+// own started_at + duration_minutes (a per-student allowance that starts
+// when THEY started, not when the exam window opened). `submit` is
+// deliberately NOT gated by this -- it only reads/grades answers already
+// saved, writes nothing new, and a late submit is how an attempt that ran
+// out the clock actually gets out of "in_progress" limbo and graded, so
+// blocking it would strand attempts forever with no cron job to sweep them.
+function assertWithinAttemptDeadline(attempt, exam) {
+    const examDeadline = new Date(exam.end_at);
+    const attemptDeadline = new Date(new Date(attempt.started_at).getTime() + exam.duration_minutes * 60000);
+    const deadline = examDeadline < attemptDeadline ? examDeadline : attemptDeadline;
+    if (new Date() > deadline) {
+        throw errors.forbidden("زمان مجاز این آزمون به پایان رسیده — دیگر نمی‌توانید پاسخ جدیدی ثبت کنید، فقط می‌توانید ارسال نهایی کنید");
+    }
+}
+
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     const student = await getStudentRecord(env, user.id);
@@ -66,6 +88,9 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
         requireFields(body, ["attempt_id", "question_id"]);
         const attempt = await loadOwnAttempt(db, body.attempt_id, student.id);
         if (attempt.status !== "in_progress") throw errors.forbidden("این Attempt دیگر قابل ویرایش نیست");
+
+        const exam = await db.first(`SELECT * FROM exams WHERE id = ?`, attempt.exam_id);
+        assertWithinAttemptDeadline(attempt, exam);
 
         // question must belong to this exam — prevents submitting a foreign question_id
         const belongs = await db.first(

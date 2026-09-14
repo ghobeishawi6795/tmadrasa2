@@ -29,6 +29,12 @@ const DIRECT_TABLES = [
     "attendance_sessions", "attendance_records",
     "conversations", "conversation_members",
     "announcements",
+    // BUGFIX: these 7 all carry school_id directly but were missing from
+    // the export entirely -- grade_periods/chapters/learning_skills/
+    // school_holidays/notifications/user_roles were user-reported gaps;
+    // student_practice_results was found during the same audit.
+    "grade_periods", "chapters", "learning_skills", "school_holidays",
+    "notifications", "user_roles", "student_practice_results",
 ];
 
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
@@ -74,6 +80,33 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
         : [];
     dump.exam_answers = attemptIds.length
         ? (await db.all(`SELECT * FROM exam_answers WHERE attempt_id IN (${attemptIds.map(() => "?").join(",")})`, ...attemptIds)).results
+        : [];
+
+    // BUGFIX: these tables also have no direct school_id column (same as
+    // question_options/exam_questions/exam_answers above) and were missing
+    // from the export entirely -- most notably submission_answers, which is
+    // the actual student answer data for multi-question assignments.
+    dump.question_skills = questionIds.length
+        ? (await db.all(`SELECT * FROM question_skills WHERE question_id IN (${questionIds.map(() => "?").join(",")})`, ...questionIds)).results
+        : [];
+    dump.question_versions = questionIds.length
+        ? (await db.all(`SELECT * FROM question_versions WHERE question_id IN (${questionIds.map(() => "?").join(",")})`, ...questionIds)).results
+        : [];
+
+    const assignmentIds = dump.assignments.map(a => a.id);
+    dump.assignment_questions = assignmentIds.length
+        ? (await db.all(`SELECT * FROM assignment_questions WHERE assignment_id IN (${assignmentIds.map(() => "?").join(",")})`, ...assignmentIds)).results
+        : [];
+    dump.assignment_attachments = assignmentIds.length
+        ? (await db.all(`SELECT * FROM assignment_attachments WHERE assignment_id IN (${assignmentIds.map(() => "?").join(",")})`, ...assignmentIds)).results
+        : [];
+
+    const submissionIds = dump.submissions.map(s => s.id);
+    dump.submission_answers = submissionIds.length
+        ? (await db.all(`SELECT * FROM submission_answers WHERE submission_id IN (${submissionIds.map(() => "?").join(",")})`, ...submissionIds)).results
+        : [];
+    dump.submission_files = submissionIds.length
+        ? (await db.all(`SELECT * FROM submission_files WHERE submission_id IN (${submissionIds.map(() => "?").join(",")})`, ...submissionIds)).results
         : [];
 
     const conversationIds = dump.conversations.map(c => c.id);

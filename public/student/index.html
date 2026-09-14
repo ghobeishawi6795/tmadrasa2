@@ -1079,7 +1079,8 @@ async function submitPracticeAnswer(questionId, type) {
         : result.is_correct === 0 ? `<span class="status red">نادرست</span>`
         : `<span class="status orange">ثبت شد</span>`;
     let refLine = "";
-    if (result.correct_boolean !== undefined) refLine = `<div style="margin-top:6px">پاسخ درست: ${result.correct_boolean ? "درست" : "غلط"}</div>`;
+    if (result.correct_option_text) refLine = `<div style="margin-top:6px">پاسخ درست: ${escapeHtml(result.correct_option_text)}</div>`;
+    else if (result.correct_boolean !== undefined) refLine = `<div style="margin-top:6px">پاسخ درست: ${result.correct_boolean ? "درست" : "غلط"}</div>`;
     else if (result.correct_numeric !== undefined) refLine = `<div style="margin-top:6px">پاسخ درست: ${result.correct_numeric}</div>`;
     else if (result.correct_text) refLine = `<div style="margin-top:6px">پاسخ نمونه: ${escapeHtml(result.correct_text.split(",")[0])}</div>`;
 
@@ -1223,7 +1224,8 @@ async function submitQuickPracticeAnswer() {
         : result.is_correct === 0 ? `<span class="status red">نادرست</span>`
         : `<span class="status orange">ثبت شد</span>`;
     let refLine = "";
-    if (result.correct_boolean !== undefined) refLine = `<div style="margin-top:6px">پاسخ درست: ${result.correct_boolean ? "درست" : "غلط"}</div>`;
+    if (result.correct_option_text) refLine = `<div style="margin-top:6px">پاسخ درست: ${escapeHtml(result.correct_option_text)}</div>`;
+    else if (result.correct_boolean !== undefined) refLine = `<div style="margin-top:6px">پاسخ درست: ${result.correct_boolean ? "درست" : "غلط"}</div>`;
     else if (result.correct_numeric !== undefined) refLine = `<div style="margin-top:6px">پاسخ درست: ${result.correct_numeric}</div>`;
     else if (result.correct_text) refLine = `<div style="margin-top:6px">پاسخ نمونه: ${escapeHtml(result.correct_text.split(",")[0])}</div>`;
 

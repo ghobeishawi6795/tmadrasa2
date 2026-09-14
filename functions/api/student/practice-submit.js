@@ -32,10 +32,11 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     }
 
     let isCorrect = null; // stays null for every manually-graded type below
+    let correctOption = null;
 
     if (question.type === "multiple_choice") {
-        const correctOpt = await db.first(`SELECT id FROM question_options WHERE question_id = ? AND is_correct = 1`, question.id);
-        isCorrect = correctOpt && Number(body.selected_option_id) === correctOpt.id ? 1 : 0;
+        correctOption = await db.first(`SELECT id, text FROM question_options WHERE question_id = ? AND is_correct = 1`, question.id);
+        isCorrect = correctOption && Number(body.selected_option_id) === correctOption.id ? 1 : 0;
     } else if (question.type === "true_false") {
         isCorrect = typeof body.boolean_answer === "boolean" && body.boolean_answer === !!question.correct_boolean ? 1 : 0;
     } else if (question.type === "numeric") {
@@ -61,7 +62,12 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     // Reveal a reference answer now -- safe, the student just answered this
     // themselves and this never reaches a grade.
     const reveal = {};
-    if (question.type === "true_false") reveal.correct_boolean = !!question.correct_boolean;
+    // BUGFIX: every other auto-graded type revealed its correct answer here
+    // except multiple_choice, which had no branch at all -- the option's
+    // own is_correct flag was already being computed above, just never
+    // surfaced back to the student.
+    if (question.type === "multiple_choice") reveal.correct_option_text = correctOption ? correctOption.text : null;
+    else if (question.type === "true_false") reveal.correct_boolean = !!question.correct_boolean;
     else if (question.type === "numeric") reveal.correct_numeric = question.correct_numeric;
     else if (question.correct_text) reveal.correct_text = question.correct_text;
 

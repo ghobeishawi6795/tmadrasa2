@@ -77,7 +77,26 @@ export async function createQuestionRecord(env, { schoolId, teacherId, body }) {
         if (!body.custom_html || !body.custom_html.trim()) throw errors.validation("محتوای HTML الزامی است");
         requireMaxLength(body.custom_html, CUSTOM_HTML_MAX_CHARS, "محتوای HTML");
     }
+    // BUGFIX: this used to run AFTER the INSERT below -- a validation failure
+    // here left an orphaned, broken multiple_choice question (zero options,
+    // no correct_option_id) permanently sitting in the teacher's bank. Now
+    // checked before anything is written.
+    if (body.type === "multiple_choice") {
+        if (!Array.isArray(body.options) || body.options.length < 2) {
+            throw errors.validation("سؤال چندگزینه‌ای باید حداقل دو گزینه داشته باشد");
+        }
+        const correctCount = body.options.filter(o => o.is_correct).length;
+        if (correctCount !== 1) throw errors.validation("دقیقاً یک گزینه صحیح باید مشخص شود");
+    }
     const meta = readMetadata(body);
+    // BUGFIX: nothing previously stopped a fill_blank question with
+    // grading_mode "auto" (the default) from being saved with an empty
+    // correct_text -- exam-attempt.js's grading then finds an empty accepted-
+    // answers list, so EVERY student answer is auto-marked wrong forever.
+    const gradingMode = resolveGradingMode(body.type, body.grading_mode);
+    if (body.type === "fill_blank" && gradingMode === "auto" && !(body.correct_text && String(body.correct_text).trim())) {
+        throw errors.validation("برای جای‌خالی با تصحیح خودکار، پاسخ صحیح الزامی است (یا نحوه‌ی تصحیح را «دستی» انتخاب کنید)");
+    }
     const db = q(env);
 
     const result = await db.run(
@@ -91,19 +110,13 @@ export async function createQuestionRecord(env, { schoolId, teacherId, body }) {
         body.type === "numeric" ? (body.numeric_tolerance || 0) : null,
         (body.type === "short_answer" || body.type === "long_answer" || body.type === "fill_blank") ? (body.correct_text || null) : null,
         meta.chapter, meta.topic, meta.explanation, meta.tags, meta.difficulty,
-        resolveGradingMode(body.type, body.grading_mode),
+        gradingMode,
         body.type === "custom_html" ? body.custom_html : null,
         resolveVisibility(body.visibility, undefined) || "private"
     );
     const questionId = result.meta.last_row_id;
 
     if (body.type === "multiple_choice") {
-        if (!Array.isArray(body.options) || body.options.length < 2) {
-            throw errors.validation("سؤال چندگزینه‌ای باید حداقل دو گزینه داشته باشد");
-        }
-        const correctCount = body.options.filter(o => o.is_correct).length;
-        if (correctCount !== 1) throw errors.validation("دقیقاً یک گزینه صحیح باید مشخص شود");
-
         let correctOptionId = null;
         for (const opt of body.options) {
             const r = await db.run(
@@ -244,7 +257,22 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
         if (!body.custom_html || !body.custom_html.trim()) throw errors.validation("محتوای HTML الزامی است");
         requireMaxLength(body.custom_html, CUSTOM_HTML_MAX_CHARS, "محتوای HTML");
     }
+    // BUGFIX: this used to run AFTER the base UPDATE below -- a validation
+    // failure left the question's text/metadata already updated while its
+    // options stayed untouched (stale), an inconsistent half-write. Checked
+    // up front now so a failure changes nothing at all.
+    if (type === "multiple_choice") {
+        if (!Array.isArray(body.options) || body.options.length < 2) {
+            throw errors.validation("سؤال چندگزینه‌ای باید حداقل دو گزینه داشته باشد");
+        }
+        const correctCount = body.options.filter(o => o.is_correct).length;
+        if (correctCount !== 1) throw errors.validation("دقیقاً یک گزینه صحیح باید مشخص شود");
+    }
     const meta = readMetadata(body);
+    const gradingMode = resolveGradingMode(type, body.grading_mode);
+    if (type === "fill_blank" && gradingMode === "auto" && !(body.correct_text && String(body.correct_text).trim())) {
+        throw errors.validation("برای جای‌خالی با تصحیح خودکار، پاسخ صحیح الزامی است (یا نحوه‌ی تصحیح را «دستی» انتخاب کنید)");
+    }
 
     await db.run(
         `UPDATE questions
@@ -259,19 +287,13 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
         type === "numeric" ? (body.numeric_tolerance || 0) : null,
         (type === "short_answer" || type === "long_answer" || type === "fill_blank") ? (body.correct_text || null) : null,
         meta.chapter, meta.topic, meta.explanation, meta.tags, meta.difficulty,
-        resolveGradingMode(type, body.grading_mode),
+        gradingMode,
         type === "custom_html" ? body.custom_html : null,
         resolveVisibility(body.visibility, question.visibility) ?? null,
         question.id
     );
 
     if (type === "multiple_choice") {
-        if (!Array.isArray(body.options) || body.options.length < 2) {
-            throw errors.validation("سؤال چندگزینه‌ای باید حداقل دو گزینه داشته باشد");
-        }
-        const correctCount = body.options.filter(o => o.is_correct).length;
-        if (correctCount !== 1) throw errors.validation("دقیقاً یک گزینه صحیح باید مشخص شود");
-
         await db.run(`DELETE FROM question_options WHERE question_id = ?`, question.id);
         let correctOptionId = null;
         for (const opt of body.options) {

@@ -13,9 +13,27 @@
 // that no double-entry is needed.
 import { q } from "./db.js";
 
+// BUGFIX: this used to be `ORDER BY start_at DESC LIMIT 1` with no check
+// that "now" is actually inside that period's range -- at a term boundary
+// (before the next period's start_at arrives, or if a future period was
+// pre-created in advance) a grade got silently attributed to whichever
+// period merely had the latest start_at, not the one actually in effect.
+// Fallback: if no period's range currently contains "now" (e.g. a gap
+// between terms with no period covering today), fall back to the most
+// recent period whose start_at has already passed, same as the old
+// behavior -- better to file it under the last real period than not sync
+// the grade at all.
 export async function getCurrentGradePeriod(db, schoolId) {
+    const current = await db.first(
+        `SELECT * FROM grade_periods
+          WHERE school_id = ? AND start_at <= datetime('now')
+            AND (end_at IS NULL OR end_at >= datetime('now'))
+          ORDER BY start_at DESC LIMIT 1`,
+        schoolId
+    );
+    if (current) return current;
     return await db.first(
-        `SELECT * FROM grade_periods WHERE school_id = ? ORDER BY start_at DESC LIMIT 1`,
+        `SELECT * FROM grade_periods WHERE school_id = ? AND start_at <= datetime('now') ORDER BY start_at DESC LIMIT 1`,
         schoolId
     );
 }

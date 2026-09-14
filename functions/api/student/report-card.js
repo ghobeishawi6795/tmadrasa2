@@ -3,6 +3,7 @@ import { q } from "../_shared/db.js";
 import { authenticate, requirePermission } from "../_shared/auth.js";
 import { getStudentRecord } from "../_shared/ownership.js";
 import { buildReportCard } from "../_shared/reportcard.js";
+import { getCurrentGradePeriod } from "../_shared/grades-sync.js";
 import { ok } from "../_shared/response.js";
 import { withErrorHandling } from "../_shared/validate.js";
 
@@ -19,10 +20,10 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     if (periodId) {
         period = await db.first(`SELECT * FROM grade_periods WHERE id = ? AND school_id = ?`, periodId, user.school_id);
     } else {
-        period = await db.first(
-            `SELECT * FROM grade_periods WHERE school_id = ? ORDER BY start_at DESC LIMIT 1`,
-            user.school_id
-        );
+        // BUGFIX: was a duplicated, flawed `ORDER BY start_at DESC LIMIT 1`
+        // with no check that "now" actually falls inside that period's
+        // range -- now shares the same fixed lookup used when syncing grades.
+        period = await getCurrentGradePeriod(db, user.school_id);
         periodId = period ? period.id : null;
     }
 
