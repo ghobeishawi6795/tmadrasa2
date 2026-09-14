@@ -18,10 +18,11 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
 
     const db = q(env);
     const rows = await db.all(
-        `SELECT e.*, c.name as class_name, s.name as subject_name
+        `SELECT e.*, c.name as class_name, s.name as subject_name, ch.name as chapter_name
            FROM exams e
            JOIN classes c ON c.id = e.class_id
            JOIN subjects s ON s.id = e.subject_id
+           LEFT JOIN chapters ch ON ch.id = e.chapter_id
           WHERE e.teacher_id = ? AND e.school_id = ? AND e.deleted_at IS NULL
           ORDER BY e.created_at DESC`,
         teacher.id, user.school_id
@@ -46,13 +47,24 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     await assertTeacherTeachesSubjectInClass(env, teacher.id, body.class_id, body.subject_id, user.school_id);
 
     const db = q(env);
+
+    let chapterId = null;
+    if (body.chapter_id) {
+        const chapter = await db.first(
+            `SELECT id FROM chapters WHERE id = ? AND teacher_id = ? AND subject_id = ?`,
+            body.chapter_id, teacher.id, body.subject_id
+        );
+        if (!chapter) throw errors.validation("فصل انتخاب‌شده معتبر نیست");
+        chapterId = chapter.id;
+    }
+
     const result = await db.run(
         `INSERT INTO exams (school_id, class_id, subject_id, teacher_id, title, description,
-                             type, start_at, end_at, duration_minutes, max_attempts, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
+                             type, start_at, end_at, duration_minutes, max_attempts, status, chapter_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`,
         user.school_id, body.class_id, body.subject_id, teacher.id, body.title,
         body.description || null, body.type || "quiz", body.start_at, body.end_at,
-        body.duration_minutes, body.max_attempts || 1
+        body.duration_minutes, body.max_attempts || 1, chapterId
     );
 
     return created({ id: result.meta.last_row_id }, "آزمون ساخته شد (پیش‌نویس)");
@@ -67,7 +79,8 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     requireFields(body, ["id"]);
     const exam = await loadExamOwnedByTeacher(env, body.id, teacher.id, user.school_id);
 
-    if (exam.status !== "draft" && (body.title || body.class_id || body.subject_id)) {
+    const hasChapterField = Object.prototype.hasOwnProperty.call(body, "chapter_id");
+    if (exam.status !== "draft" && (body.title || body.class_id || body.subject_id || hasChapterField)) {
         throw errors.forbidden("آزمون منتشرشده را فقط می‌توان منتشر یا بسته کرد، نه ویرایش محتوا");
     }
 
@@ -107,14 +120,26 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     }
 
     // plain field update (draft only)
+    let chapterId = exam.chapter_id;
+    if (hasChapterField) {
+        chapterId = null;
+        if (body.chapter_id) {
+            const chapter = await db.first(
+                `SELECT id FROM chapters WHERE id = ? AND teacher_id = ? AND subject_id = ?`,
+                body.chapter_id, teacher.id, body.subject_id ?? exam.subject_id
+            );
+            if (!chapter) throw errors.validation("فصل انتخاب‌شده معتبر نیست");
+            chapterId = chapter.id;
+        }
+    }
     await db.run(
         `UPDATE exams SET title=?, description=?, start_at=?, end_at=?, duration_minutes=?,
-                           max_attempts=?, updated_at=datetime('now')
+                           max_attempts=?, chapter_id=?, updated_at=datetime('now')
           WHERE id = ?`,
         body.title ?? exam.title, body.description ?? exam.description,
         body.start_at ?? exam.start_at, body.end_at ?? exam.end_at,
         body.duration_minutes ?? exam.duration_minutes, body.max_attempts ?? exam.max_attempts,
-        exam.id
+        chapterId, exam.id
     );
     return ok(null, "آزمون به‌روزرسانی شد");
 });

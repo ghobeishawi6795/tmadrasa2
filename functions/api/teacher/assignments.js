@@ -24,12 +24,13 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
 
     const db = q(env);
     const rows = await db.all(
-        `SELECT a.*, c.name as class_name, s.name as subject_name,
+        `SELECT a.*, c.name as class_name, s.name as subject_name, ch.name as chapter_name,
                 (SELECT COUNT(*) FROM submissions sub WHERE sub.assignment_id = a.id) as submission_count,
                 (SELECT COUNT(*) FROM assignment_questions aq WHERE aq.assignment_id = a.id) as question_count
            FROM assignments a
            JOIN classes c ON c.id = a.class_id
            JOIN subjects s ON s.id = a.subject_id
+           LEFT JOIN chapters ch ON ch.id = a.chapter_id
           WHERE a.teacher_id = ? AND a.school_id = ? AND a.deleted_at IS NULL
           ORDER BY a.due_at DESC`,
         teacher.id, user.school_id
@@ -60,13 +61,24 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     await assertTeacherTeachesSubjectInClass(env, teacher.id, body.class_id, body.subject_id, user.school_id);
 
     const db = q(env);
+
+    let chapterId = null;
+    if (body.chapter_id) {
+        const chapter = await db.first(
+            `SELECT id FROM chapters WHERE id = ? AND teacher_id = ? AND subject_id = ?`,
+            body.chapter_id, teacher.id, body.subject_id
+        );
+        if (!chapter) throw errors.validation("فصل انتخاب‌شده معتبر نیست");
+        chapterId = chapter.id;
+    }
+
     const result = await db.run(
         `INSERT INTO assignments (school_id, class_id, subject_id, teacher_id, title, description,
-                                   due_at, allow_late, max_attempts, max_score, submission_type, question_payload)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                   due_at, allow_late, max_attempts, max_score, submission_type, question_payload, chapter_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         user.school_id, body.class_id, body.subject_id, teacher.id, body.title,
         body.description || null, body.due_at, body.allow_late ? 1 : 0,
-        body.max_attempts || 1, body.max_score || 20, submissionType, questionPayload
+        body.max_attempts || 1, body.max_score || 20, submissionType, questionPayload, chapterId
     );
     const assignmentId = result.meta.last_row_id;
 

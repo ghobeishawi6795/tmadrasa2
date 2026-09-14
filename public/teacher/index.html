@@ -226,22 +226,56 @@ async function renderClasses() {
 const SUBMISSION_TYPE_LABELS = { text: "متنی", photo: "عکس", audio: "صوتی", draw: "نقاشی", match: "تطبیق (خودکار)", drag_drop: "دسته‌بندی (خودکار)" };
 
 async function renderAssignments() {
+    const filters = cache.assignmentFilters || (cache.assignmentFilters = {});
+    const subjects = cache.subjects || (cache.subjects = await api.get("/api/admin/subjects"));
     const assignments = await api.get("/api/teacher/assignments");
     cache.assignments = assignments;
 
+    const subjectFiltered = filters.subject_id ? assignments.filter(a => a.subject_id === Number(filters.subject_id)) : assignments;
+    const chapterTabs = [...new Map(
+        subjectFiltered.filter(a => a.chapter_id).map(a => [a.chapter_id, { id: a.chapter_id, name: a.chapter_name }])
+    ).values()];
+    const hasNoChapterItem = subjectFiltered.some(a => !a.chapter_id);
+    const visible = filters.subject_id
+        ? subjectFiltered.filter(a => {
+            if (!filters.chapterKey) return true;
+            if (filters.chapterKey === "none") return !a.chapter_id;
+            return a.chapter_id === Number(filters.chapterKey);
+        })
+        : subjectFiltered;
+
     document.getElementById("content").innerHTML = `
         <div class="page-head">
-            <div><div class="page-title">تکالیف</div><div class="page-subtitle">${assignments.length} تکلیف</div></div>
+            <div><div class="page-title">تکالیف</div><div class="page-subtitle">${visible.length} تکلیف</div></div>
             <button class="primary-btn" onclick="openAssignmentForm()">+ تکلیف جدید</button>
         </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+            <button class="${!filters.subject_id ? "primary-btn" : "secondary-btn"}" style="padding:6px 12px" onclick="cache.assignmentFilters={}; renderAssignments()">همه‌ی درس‌ها</button>
+            ${subjects.map(s => `
+                <button class="${Number(filters.subject_id) === s.id ? "primary-btn" : "secondary-btn"}" style="padding:6px 12px" onclick="cache.assignmentFilters={subject_id:${s.id}}; renderAssignments()">${escapeHtml(s.name)}</button>
+            `).join("")}
+        </div>
+        ${filters.subject_id && (chapterTabs.length || hasNoChapterItem) ? `
+            <div class="module" style="margin-bottom:10px">
+                <div class="module-body" style="display:flex;flex-direction:column;gap:6px;max-width:420px">
+                    <span class="page-subtitle" style="margin:0 0 2px">فصل:</span>
+                    <button class="${!filters.chapterKey ? "primary-btn" : "secondary-btn"}" style="text-align:right;padding:8px 12px" onclick="cache.assignmentFilters.chapterKey=null; renderAssignments()">همه</button>
+                    ${chapterTabs.map(c => `
+                        <button class="${filters.chapterKey === String(c.id) ? "primary-btn" : "secondary-btn"}" style="text-align:right;padding:8px 12px" onclick="cache.assignmentFilters.chapterKey='${c.id}'; renderAssignments()">${escapeHtml(c.name)}</button>
+                    `).join("")}
+                    ${hasNoChapterItem ? `<button class="${filters.chapterKey === "none" ? "primary-btn" : "secondary-btn"}" style="text-align:right;padding:8px 12px" onclick="cache.assignmentFilters.chapterKey='none'; renderAssignments()">بدون فصل</button>` : ""}
+                </div>
+            </div>
+        ` : ""}
         <div class="module"><div class="module-body table-wrap">
             <table>
-                <thead><tr><th>عنوان</th><th>کلاس / درس</th><th>نوع پاسخ</th><th>مهلت</th><th>پاسخ‌ها</th><th></th></tr></thead>
+                <thead><tr><th>عنوان</th><th>کلاس / درس</th><th>فصل</th><th>نوع پاسخ</th><th>مهلت</th><th>پاسخ‌ها</th><th></th></tr></thead>
                 <tbody>
-                    ${assignments.map(a => `
+                    ${visible.map(a => `
                         <tr>
                             <td>${escapeHtml(a.title)}</td>
                             <td>${escapeHtml(a.class_name)} / ${escapeHtml(a.subject_name)}</td>
+                            <td>${a.chapter_name ? escapeHtml(a.chapter_name) : `<span style="color:var(--muted)">—</span>`}</td>
                             <td>${a.is_multi_question ? `چندسؤالی (${a.question_count} سؤال)` : (SUBMISSION_TYPE_LABELS[a.submission_type] || escapeHtml(a.submission_type))}</td>
                             <td>${formatJalaliDateTime(a.due_at)}</td>
                             <td>${a.submission_count}</td>
@@ -251,7 +285,7 @@ async function renderAssignments() {
                                 <button class="secondary-btn" onclick="deleteAssignment(${a.id})">حذف</button>
                             </td>
                         </tr>
-                    `).join("") || `<tr><td colspan="6" style="text-align:center;color:var(--muted)">تکلیفی ثبت نشده</td></tr>`}
+                    `).join("") || `<tr><td colspan="7" style="text-align:center;color:var(--muted)">تکلیفی ثبت نشده</td></tr>`}
                 </tbody>
             </table>
         </div></div>
@@ -268,9 +302,12 @@ async function openAssignmentForm() {
         <form id="assignmentForm">
             <div class="form-group"><label>عنوان</label><input class="form-input" name="title" required></div>
             <div class="form-group"><label>کلاس / درس</label>
-                <select class="form-input" name="combo" required>
+                <select class="form-input" name="combo" id="assignmentCombo" onchange="loadChapterOptionsFor('assignmentChapterSelect', this.value.split(':')[1])" required>
                     ${assignments.map(a => `<option value="${a.class_id}:${a.subject_id}">${escapeHtml(a.class_name)} — ${escapeHtml(a.subject_name)}</option>`).join("")}
                 </select>
+            </div>
+            <div class="form-group"><label>فصل اصلی (اختیاری)</label>
+                <select class="form-input" name="chapter_id" id="assignmentChapterSelect"><option value="">— بدون فصل —</option></select>
             </div>
             <div class="form-group"><label>توضیحات (اختیاری)</label><textarea class="form-input" name="description" rows="2" style="height:auto;padding:10px 12px"></textarea></div>
             <div class="form-group"><label>نوع پاسخ دانش‌آموز</label>
@@ -298,6 +335,7 @@ async function openAssignmentForm() {
         </form>
     `);
     onSubmissionTypeChange();
+    loadChapterOptionsFor("assignmentChapterSelect", document.getElementById("assignmentCombo").value.split(":")[1]);
 
     document.getElementById("assignmentForm").addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -306,6 +344,7 @@ async function openAssignmentForm() {
         const [classId, subjectId] = body.combo.split(":");
         delete body.combo;
         body.class_id = classId; body.subject_id = subjectId;
+        if (!body.chapter_id) delete body.chapter_id;
         body.allow_late = fd.get("allow_late") ? true : false;
         const dueAtLocal = readJalaliDatePicker("dueAt", { withTime: true });
         if (!dueAtLocal) { toast("مهلت ارسال را کامل مشخص کنید", true); return; }
@@ -531,22 +570,59 @@ async function submitMultiAnswerGrade(event, answerId, submissionId, assignmentT
 ========================================================= */
 
 async function renderExams() {
+    const filters = cache.examFilters || (cache.examFilters = {});
+    const subjects = cache.subjects || (cache.subjects = await api.get("/api/admin/subjects"));
     const exams = await api.get("/api/teacher/exams");
     cache.exams = exams;
 
+    const subjectFiltered = filters.subject_id ? exams.filter(e => e.subject_id === Number(filters.subject_id)) : exams;
+    // chapter sub-tabs derived from this filtered list itself (no separate
+    // fetch/management here -- unlike the bank page, chapters aren't created
+    // from this screen, only picked at exam-creation time via chapters.js).
+    const chapterTabs = [...new Map(
+        subjectFiltered.filter(e => e.chapter_id).map(e => [e.chapter_id, { id: e.chapter_id, name: e.chapter_name }])
+    ).values()];
+    const hasNoChapterItem = subjectFiltered.some(e => !e.chapter_id);
+    const visible = filters.subject_id
+        ? subjectFiltered.filter(e => {
+            if (!filters.chapterKey) return true;
+            if (filters.chapterKey === "none") return !e.chapter_id;
+            return e.chapter_id === Number(filters.chapterKey);
+        })
+        : subjectFiltered;
+
     document.getElementById("content").innerHTML = `
         <div class="page-head">
-            <div><div class="page-title">آزمون‌ها</div><div class="page-subtitle">${exams.length} آزمون</div></div>
+            <div><div class="page-title">آزمون‌ها</div><div class="page-subtitle">${visible.length} آزمون</div></div>
             <button class="primary-btn" onclick="openExamForm()">+ آزمون جدید</button>
         </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+            <button class="${!filters.subject_id ? "primary-btn" : "secondary-btn"}" style="padding:6px 12px" onclick="cache.examFilters={}; renderExams()">همه‌ی درس‌ها</button>
+            ${subjects.map(s => `
+                <button class="${Number(filters.subject_id) === s.id ? "primary-btn" : "secondary-btn"}" style="padding:6px 12px" onclick="cache.examFilters={subject_id:${s.id}}; renderExams()">${escapeHtml(s.name)}</button>
+            `).join("")}
+        </div>
+        ${filters.subject_id && (chapterTabs.length || hasNoChapterItem) ? `
+            <div class="module" style="margin-bottom:10px">
+                <div class="module-body" style="display:flex;flex-direction:column;gap:6px;max-width:420px">
+                    <span class="page-subtitle" style="margin:0 0 2px">فصل:</span>
+                    <button class="${!filters.chapterKey ? "primary-btn" : "secondary-btn"}" style="text-align:right;padding:8px 12px" onclick="cache.examFilters.chapterKey=null; renderExams()">همه</button>
+                    ${chapterTabs.map(c => `
+                        <button class="${filters.chapterKey === String(c.id) ? "primary-btn" : "secondary-btn"}" style="text-align:right;padding:8px 12px" onclick="cache.examFilters.chapterKey='${c.id}'; renderExams()">${escapeHtml(c.name)}</button>
+                    `).join("")}
+                    ${hasNoChapterItem ? `<button class="${filters.chapterKey === "none" ? "primary-btn" : "secondary-btn"}" style="text-align:right;padding:8px 12px" onclick="cache.examFilters.chapterKey='none'; renderExams()">بدون فصل</button>` : ""}
+                </div>
+            </div>
+        ` : ""}
         <div class="module"><div class="module-body table-wrap">
             <table>
-                <thead><tr><th>عنوان</th><th>کلاس / درس</th><th>وضعیت</th><th></th></tr></thead>
+                <thead><tr><th>عنوان</th><th>کلاس / درس</th><th>فصل</th><th>وضعیت</th><th></th></tr></thead>
                 <tbody>
-                    ${exams.map(e => `
+                    ${visible.map(e => `
                         <tr>
                             <td>${escapeHtml(e.title)}</td>
                             <td>${escapeHtml(e.class_name)} / ${escapeHtml(e.subject_name)}</td>
+                            <td>${e.chapter_name ? escapeHtml(e.chapter_name) : `<span style="color:var(--muted)">—</span>`}</td>
                             <td><span class="status ${examStatusColor(e.status)}">${examStatusLabel(e.status)}</span></td>
                             <td style="display:flex;gap:6px;flex-wrap:wrap">
                                 <button class="secondary-btn" onclick="openExamQuestions(${e.id})">سؤالات</button>
@@ -556,7 +632,7 @@ async function renderExams() {
                                 <button class="secondary-btn" onclick="deleteExam(${e.id})">حذف</button>
                             </td>
                         </tr>
-                    `).join("") || `<tr><td colspan="4" style="text-align:center;color:var(--muted)">آزمونی ثبت نشده</td></tr>`}
+                    `).join("") || `<tr><td colspan="5" style="text-align:center;color:var(--muted)">آزمونی ثبت نشده</td></tr>`}
                 </tbody>
             </table>
         </div></div>
@@ -573,9 +649,12 @@ async function openExamForm() {
         <form id="examForm">
             <div class="form-group"><label>عنوان آزمون</label><input class="form-input" name="title" required></div>
             <div class="form-group"><label>کلاس / درس</label>
-                <select class="form-input" name="combo" required>
+                <select class="form-input" name="combo" id="examCombo" onchange="loadChapterOptionsFor('examChapterSelect', this.value.split(':')[1])" required>
                     ${assignments.map(a => `<option value="${a.class_id}:${a.subject_id}">${escapeHtml(a.class_name)} — ${escapeHtml(a.subject_name)}</option>`).join("")}
                 </select>
+            </div>
+            <div class="form-group"><label>فصل اصلی (اختیاری)</label>
+                <select class="form-input" name="chapter_id" id="examChapterSelect"><option value="">— بدون فصل —</option></select>
             </div>
             <div class="form-group"><label>توضیحات (اختیاری)</label><textarea class="form-input" name="description" rows="2" style="height:auto;padding:10px 12px"></textarea></div>
             <div class="form-group"><label>شروع</label>${renderJalaliDatePicker("examStart", { withTime: true, defaultTime: "08:00" })}</div>
@@ -588,6 +667,7 @@ async function openExamForm() {
             </div>
         </form>
     `);
+    loadChapterOptionsFor("examChapterSelect", document.getElementById("examCombo").value.split(":")[1]);
 
     document.getElementById("examForm").addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -596,6 +676,7 @@ async function openExamForm() {
         const [classId, subjectId] = body.combo.split(":");
         delete body.combo;
         body.class_id = classId; body.subject_id = subjectId;
+        if (!body.chapter_id) delete body.chapter_id;
         const startLocal = readJalaliDatePicker("examStart", { withTime: true });
         const endLocal = readJalaliDatePicker("examEnd", { withTime: true });
         if (!startLocal || !endLocal) { toast("زمان شروع و پایان را کامل مشخص کنید", true); return; }
@@ -605,6 +686,23 @@ async function openExamForm() {
         closeModal();
         renderExams();
     });
+}
+
+// Shared by the exam and assignment "create" forms -- populates a chapter
+// <select> (id passed in) with the given subject's chapters, called both on
+// open (for the initially-selected subject) and again whenever the class/درس
+// combo box changes. Purely additive/optional: leaving it on "— بدون فصل —"
+// omits chapter_id from the submitted body entirely.
+async function loadChapterOptionsFor(selectId, subjectId) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    select.innerHTML = `<option value="">— بدون فصل —</option>`;
+    if (!subjectId) return;
+    try {
+        const chapters = await api.get(`/api/teacher/chapters?subject_id=${subjectId}`);
+        select.innerHTML = `<option value="">— بدون فصل —</option>` +
+            chapters.filter(c => c.id).map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
+    } catch (e) { /* subject with no chapters yet, or fetch failed -- leave as "بدون فصل" */ }
 }
 
 async function publishExam(id) {
