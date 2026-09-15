@@ -53,6 +53,11 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
 
     const currentYear = await db.first(`SELECT id FROM academic_years WHERE school_id = ? AND is_current = 1 ORDER BY id DESC LIMIT 1`, user.school_id);
     if (!currentYear) throw errors.conflict('برای این مدرسه سال تحصیلی جاری تعریف نشده است');
+    // A student is always enrolled into the CURRENT academic year (see
+    // student_enrollments insert below) -- a class from any other year can't
+    // be the target, and a DB trigger would reject it anyway with a cryptic
+    // message, so check this early with a clear one.
+    if (cls.academic_year_id !== currentYear.id) throw errors.validation('این کلاس مربوط به سال تحصیلی جاری نیست؛ یک کلاس از سال جاری انتخاب کنید');
     const passwordHash = await hashPassword(body.password);
     const studentRole = await db.first(`SELECT id FROM roles WHERE key = 'student'`);
     if (!studentRole) throw errors.server('نقش دانش‌آموز در پایگاه‌داده وجود ندارد');

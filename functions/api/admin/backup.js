@@ -31,7 +31,7 @@ const DIRECT_TABLES = [
     "announcements",
     "grade_periods", "chapters", "learning_skills", "school_holidays",
     "notifications", "user_roles", "student_practice_results",
-    "academic_years", "discipline_records",
+    "academic_years", "discipline_records", "student_enrollments",
     "exam_schedules", "parent_requests", "parent_meetings",
     "fee_items", "student_fees", "payments", "expenses",
     "library_books", "library_loans",

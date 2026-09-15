@@ -39,6 +39,9 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     if (!studentRole) throw errors.server('نقش دانش‌آموز در پایگاه‌داده وجود ندارد');
     const currentYear = await db.first(`SELECT id FROM academic_years WHERE school_id = ? AND is_current = 1 ORDER BY id DESC LIMIT 1`, user.school_id);
     if (!currentYear) throw errors.conflict('برای این مدرسه سال تحصیلی جاری تعریف نشده است');
+    // Same reasoning as admin/students.js: enrollment is always into the
+    // current year, so the target class must belong to it too.
+    if (cls.academic_year_id !== currentYear.id) throw errors.validation('این کلاس مربوط به سال تحصیلی جاری نیست؛ یک کلاس از سال جاری انتخاب کنید');
 
     const created = [];
     const failed = [];

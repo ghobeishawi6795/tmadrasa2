@@ -9,12 +9,15 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "classes.view");
     const db = q(env);
+    const url = new URL(request.url);
+    const currentYearOnly = url.searchParams.get("current_year");
     const rows = await db.all(
         `SELECT c.*,
                 (SELECT COUNT(*) FROM class_students cs JOIN students st ON st.id = cs.student_id AND st.deleted_at IS NULL WHERE cs.class_id = c.id AND cs.school_id = c.school_id) AS student_count,
                 (SELECT COUNT(*) FROM class_teachers ct JOIN teachers t ON t.id = ct.teacher_id AND t.deleted_at IS NULL WHERE ct.class_id = c.id AND ct.school_id = c.school_id) AS teacher_count
            FROM classes c
           WHERE c.school_id = ? AND c.deleted_at IS NULL
+          ${currentYearOnly ? "AND c.academic_year_id = (SELECT id FROM academic_years WHERE school_id = c.school_id AND is_current = 1 ORDER BY id DESC LIMIT 1)" : ""}
           ORDER BY c.name`,
         user.school_id
     );

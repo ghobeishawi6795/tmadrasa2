@@ -242,8 +242,11 @@ async function renderStudents() {
 }
 
 async function openStudentImportForm() {
-    const classes = (cache.classes || await api.get("/api/admin/classes")) || [];
-    cache.classes = classes;
+    // Deliberately NOT cache.classes here -- a student can only be enrolled
+    // into a class from the CURRENT academic year (the backend enforces
+    // this too), while cache.classes intentionally holds every year's
+    // classes for the class-management/promotion views.
+    const classes = (await api.get("/api/admin/classes?current_year=1")) || [];
 
     if (classes.length === 0) {
         toast("ابتدا باید حداقل یک کلاس بسازید", true);
@@ -299,8 +302,8 @@ async function openStudentImportForm() {
 }
 
 async function openStudentForm() {
-    const classes = (cache.classes || await api.get("/api/admin/classes")) || [];
-    cache.classes = classes;
+    // See comment in openStudentImportForm() -- current-year classes only.
+    const classes = (await api.get("/api/admin/classes?current_year=1")) || [];
 
     if (classes.length === 0) {
         toast("ابتدا باید حداقل یک کلاس بسازید", true);
