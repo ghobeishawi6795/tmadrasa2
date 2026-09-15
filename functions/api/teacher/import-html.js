@@ -23,7 +23,7 @@ import { parseImportHtml } from "../_shared/html-import.js";
 
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["html"]);

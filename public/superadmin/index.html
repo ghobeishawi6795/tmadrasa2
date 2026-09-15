@@ -76,6 +76,7 @@ const NAV_ITEMS = [
     { key: "dashboard", icon: "🏠", label: "داشبورد" },
     { key: "schools",   icon: "🏫", label: "مدرسه‌ها" },
     { key: "messages",  icon: "💬", label: "پیام‌ها" },
+    { key: "subscriptions", icon: "💳", label: "اشتراک‌ها" },
     { key: "help",      icon: "❓", label: "راهنما" },
 ];
 
@@ -93,6 +94,7 @@ async function render(key) {
         if (key === "dashboard") await renderDashboard();
         else if (key === "schools") await renderSchools();
         else if (key === "messages") await renderMessages();
+        else if (key === "subscriptions") await renderSubscriptions();
         else if (key === "help") renderHelp();
     } catch (e) {
         content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${escapeHtml(e.message)}</div></div>`;
@@ -213,6 +215,10 @@ async function toggleSchoolActive(id, active) {
     await withToast(() => api.patch("/api/superadmin/schools", { id, active }));
     renderSchools();
 }
+
+
+async function renderSubscriptions(){const rows=await api.get("/api/superadmin/subscriptions");document.getElementById("content").innerHTML=`<div class="page-head"><div><div class="page-title">اشتراک مدرسه‌ها</div><div class="page-subtitle">پلن، وضعیت و تاریخ انقضا</div></div></div><div class="table-wrap"><table><thead><tr><th>مدرسه</th><th>پلن</th><th>وضعیت</th><th>انقضا</th><th>عملیات</th></tr></thead><tbody>${rows.map(s=>`<tr><td>${escapeHtml(s.name)}</td><td><input id="plan_${s.id}" value="${escapeHtml(s.plan||'free')}" class="form-input"></td><td><select id="status_${s.id}" class="form-input"><option value="active">active</option><option value="past_due">past_due</option><option value="cancelled">cancelled</option><option value="suspended">suspended</option></select></td><td><input id="exp_${s.id}" type="datetime-local" class="form-input" value="${s.subscription_expires_at?new Date(s.subscription_expires_at).toISOString().slice(0,16):''}"></td><td><button class="primary-btn" onclick="saveSub(${s.id})">ذخیره</button></td></tr>`).join('')||'<tr><td colspan="5">مدرسه‌ای نیست</td></tr>'}</tbody></table></div>`;rows.forEach(s=>{document.getElementById('status_'+s.id).value=s.subscription_status||'active'})}
+async function saveSub(id){await api.patch('/api/superadmin/subscriptions',{school_id:id,plan:document.getElementById('plan_'+id).value,status:document.getElementById('status_'+id).value,expires_at:document.getElementById('exp_'+id).value||null});toast('اشتراک ذخیره شد')}
 
 /* =========================================================
    MESSAGES

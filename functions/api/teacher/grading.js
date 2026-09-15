@@ -12,7 +12,7 @@ import { syncGradeFromSource } from "../_shared/grades-sync.js";
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "submissions.grade");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const url = new URL(request.url);
     const examId = url.searchParams.get("exam_id");
@@ -35,7 +35,7 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "submissions.grade");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["answer_id", "score"]);
@@ -56,13 +56,17 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
         `SELECT score FROM exam_questions WHERE exam_id = ? AND question_id = ?`,
         exam.id, answer.question_id
     );
-    if (body.score < 0 || body.score > eq.score) {
+    if (!eq || !Number.isFinite(Number(eq.score)) || Number(eq.score) < 0) {
+        throw errors.conflict('این سؤال دیگر در آزمون وجود ندارد یا نمره آن معتبر نیست');
+    }
+    const score = Number(body.score);
+    if (!Number.isFinite(score) || score < 0 || score > Number(eq.score)) {
         throw errors.validation(`نمره باید بین ۰ و ${eq.score} باشد`);
     }
 
     await db.run(
         `UPDATE exam_answers SET score = ?, feedback = ?, needs_manual_review = 0, is_correct = ? WHERE id = ?`,
-        body.score, body.feedback || null, body.score > 0 ? 1 : 0, answer.id
+        score, body.feedback || null, score > 0 ? 1 : 0, answer.id
     );
 
     // recompute the attempt total if nothing else is pending

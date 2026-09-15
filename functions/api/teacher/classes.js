@@ -10,7 +10,7 @@ import { withErrorHandling } from "../_shared/validate.js";
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "classes.view");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
     const db = q(env);
 
     const rows = await db.all(
@@ -20,8 +20,10 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
            JOIN classes c ON c.id = ta.class_id AND c.deleted_at IS NULL
            JOIN subjects s ON s.id = ta.subject_id AND s.deleted_at IS NULL
           WHERE ta.teacher_id = ? AND ta.school_id = ?
+            AND (c.academic_year_id = (SELECT id FROM academic_years WHERE school_id = ? AND is_current = 1 ORDER BY id DESC LIMIT 1)
+                 OR (c.academic_year_id IS NULL AND NOT EXISTS (SELECT 1 FROM academic_years WHERE school_id = ? AND is_current = 1)))
           ORDER BY c.name, s.name`,
-        teacher.id, user.school_id
+        teacher.id, user.school_id, user.school_id, user.school_id
     );
     return ok(rows.results);
 });

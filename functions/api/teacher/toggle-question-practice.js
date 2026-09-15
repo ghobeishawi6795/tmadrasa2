@@ -12,7 +12,7 @@ import { requireFields, readJson, withErrorHandling } from "../_shared/validate.
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "questions.update");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["id"]);

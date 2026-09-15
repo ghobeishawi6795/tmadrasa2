@@ -23,7 +23,7 @@ function renderNav(items, activeKey) {
         return `
             <button
                 class="${isActive ? "active" : ""}"
-                ${disabled ? `disabled title="${item.note || "به‌زودی"}" style="opacity:.45;cursor:default"` : `onclick="navigate('${item.key}')"`}
+                ${disabled ? `disabled title="${item.note || "به‌زودی"}" style="opacity:.45;cursor:default"` : item.href ? `onclick="window.location.href='${item.href}'"` : `onclick="navigate('${item.key}')"`}
             >
                 <span class="nav-icon">${item.icon}</span>
                 <span>${item.label}</span>

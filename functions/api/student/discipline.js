@@ -1,0 +1,2 @@
+import {q} from "../_shared/db.js";import {authenticate} from "../_shared/auth.js";import {ok,errors} from "../_shared/response.js";import {withErrorHandling} from "../_shared/validate.js";
+export const onRequestGet=withErrorHandling(async({request,env})=>{const {user}=await authenticate(request,env);const db=q(env);const r=await db.all(`SELECT d.* FROM discipline_records d JOIN students s ON s.id=d.student_id WHERE s.user_id=? AND d.school_id=? ORDER BY d.occurred_at DESC`,user.id,user.school_id);return ok(r.results);});

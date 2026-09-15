@@ -32,7 +32,7 @@ function validateExamTiming(body, fallback = {}) {
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "exams.view");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const db = q(env);
     const rows = await db.all(
@@ -51,12 +51,14 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "exams.create");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["class_id", "subject_id", "title", "start_at", "end_at", "duration_minutes"]);
 
     const timing = validateExamTiming(body);
+    const examType = body.type || "quiz";
+    if (!VALID_TYPES.includes(examType)) throw errors.validation(`نوع آزمون باید یکی از ${VALID_TYPES.join("/")} باشد`);
 
     await assertClassOwnedByTeacher(env, body.class_id, teacher.id, user.school_id);
     await assertTeacherTeachesSubjectInClass(env, teacher.id, body.class_id, body.subject_id, user.school_id);
@@ -66,8 +68,8 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     let chapterId = null;
     if (body.chapter_id) {
         const chapter = await db.first(
-            `SELECT id FROM chapters WHERE id = ? AND teacher_id = ? AND subject_id = ?`,
-            body.chapter_id, teacher.id, body.subject_id
+            `SELECT id FROM chapters WHERE id = ? AND teacher_id = ? AND subject_id = ? AND school_id = ?`,
+            body.chapter_id, teacher.id, body.subject_id, user.school_id
         );
         if (!chapter) throw errors.validation("فصل انتخاب‌شده معتبر نیست");
         chapterId = chapter.id;
@@ -78,7 +80,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
                              type, start_at, end_at, duration_minutes, max_attempts, status, chapter_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`,
         user.school_id, body.class_id, body.subject_id, teacher.id, body.title,
-        body.description || null, body.type || "quiz", body.start_at, body.end_at,
+        body.description || null, examType, body.start_at, body.end_at,
         timing.duration, timing.attempts, chapterId
     );
 
@@ -88,7 +90,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
 export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "exams.update");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["id"]);
@@ -103,9 +105,12 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
 
     if (body.action === "publish") {
         const countRow = await db.first(
-            `SELECT COUNT(*) as c FROM exam_questions WHERE exam_id = ?`, exam.id
+            `SELECT COUNT(*) as c, COUNT(DISTINCT position) as positions FROM exam_questions WHERE exam_id = ?`, exam.id
         );
         if (countRow.c === 0) throw errors.validation("آزمون بدون سؤال قابل انتشار نیست");
+        if (Number(countRow.c) !== Number(countRow.positions)) throw errors.validation("موقعیت سؤالات آزمون تکراری است");
+        if (!VALID_TYPES.includes(exam.type)) throw errors.validation("نوع آزمون نامعتبر است");
+        if (new Date(exam.end_at) <= new Date()) throw errors.validation("آزمونی که زمان پایان آن گذشته است قابل انتشار نیست");
         await db.run(
             `UPDATE exams SET status='published', published_at=datetime('now'), updated_at=datetime('now') WHERE id = ?`,
             exam.id
@@ -141,13 +146,15 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     if (body.class_id !== undefined && Number(body.class_id) !== Number(exam.class_id)) throw errors.validation("تغییر کلاس آزمون در ویرایش مجاز نیست");
     if (body.subject_id !== undefined && Number(body.subject_id) !== Number(exam.subject_id)) throw errors.validation("تغییر درس آزمون در ویرایش مجاز نیست");
     const timing = validateExamTiming(body, exam);
+    const examType = body.type ?? exam.type;
+    if (!VALID_TYPES.includes(examType)) throw errors.validation(`نوع آزمون باید یکی از ${VALID_TYPES.join("/")} باشد`);
     let chapterId = exam.chapter_id;
     if (hasChapterField) {
         chapterId = null;
         if (body.chapter_id) {
             const chapter = await db.first(
-                `SELECT id FROM chapters WHERE id = ? AND teacher_id = ? AND subject_id = ?`,
-                body.chapter_id, teacher.id, body.subject_id ?? exam.subject_id
+                `SELECT id FROM chapters WHERE id = ? AND teacher_id = ? AND subject_id = ? AND school_id = ?`,
+                body.chapter_id, teacher.id, body.subject_id ?? exam.subject_id, user.school_id
             );
             if (!chapter) throw errors.validation("فصل انتخاب‌شده معتبر نیست");
             chapterId = chapter.id;
@@ -155,12 +162,12 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     }
     await db.run(
         `UPDATE exams SET title=?, description=?, start_at=?, end_at=?, duration_minutes=?,
-                           max_attempts=?, chapter_id=?, updated_at=datetime('now')
+                           max_attempts=?, type=?, chapter_id=?, updated_at=datetime('now')
           WHERE id = ?`,
         body.title ?? exam.title, body.description ?? exam.description,
         body.start_at ?? exam.start_at, body.end_at ?? exam.end_at,
         timing.duration, timing.attempts,
-        chapterId, exam.id
+        examType, chapterId, exam.id
     );
     return ok(null, "آزمون به‌روزرسانی شد");
 });
@@ -168,7 +175,7 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
 export const onRequestDelete = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "exams.delete");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["id"]);

@@ -102,12 +102,14 @@ const api = {
     del: (path, body) => apiFetch(path, { method: "DELETE", body }),
 };
 
-async function login(schoolId, username, password) {
+async function login(schoolId, username, password, twoFactorCode = null) {
     const data = await apiFetch("/api/auth/login", {
         method: "POST",
-        body: { school_id: Number(schoolId), username, password },
+        body: { school_id: Number(schoolId), username, password, ...(twoFactorCode ? { two_factor_code: twoFactorCode } : {}) },
     });
-    setSession({ token: data.token, expires_at: data.expires_at, user: data.user, roles: data.roles });
+    if (data?.token) {
+        setSession({ token: data.token, expires_at: data.expires_at, user: data.user, roles: data.roles });
+    }
     return data;
 }
 

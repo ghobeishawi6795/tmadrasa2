@@ -5,19 +5,19 @@ import { errors } from "./response.js";
 // or belongs to a different school / teacher / student than the caller.
 // Ownership checks are ALWAYS in addition to the permission check, never instead of it.
 
-export async function getTeacherRecord(env, userId) {
+export async function getTeacherRecord(env, userId, schoolId = null) {
     const db = q(env);
     const teacher = await db.first(
-        `SELECT * FROM teachers WHERE user_id = ? AND deleted_at IS NULL`, userId
+        `SELECT * FROM teachers WHERE user_id = ? AND deleted_at IS NULL AND (? IS NULL OR school_id = ?)`, userId, schoolId, schoolId
     );
     if (!teacher) throw errors.forbidden("کاربر معلم نیست");
     return teacher;
 }
 
-export async function getStudentRecord(env, userId) {
+export async function getStudentRecord(env, userId, schoolId = null) {
     const db = q(env);
     const student = await db.first(
-        `SELECT * FROM students WHERE user_id = ? AND deleted_at IS NULL`, userId
+        `SELECT * FROM students WHERE user_id = ? AND deleted_at IS NULL AND (? IS NULL OR school_id = ?)`, userId, schoolId, schoolId
     );
     if (!student) throw errors.forbidden("کاربر دانش‌آموز نیست");
     return student;
@@ -90,10 +90,10 @@ export async function assertTeacherCanGradeStudent(env, teacherId, studentId, cl
     await assertStudentInClass(env, studentId, classId, schoolId);
 }
 
-export async function getParentRecord(env, userId) {
+export async function getParentRecord(env, userId, schoolId = null) {
     const db = q(env);
     const parent = await db.first(
-        `SELECT * FROM parents WHERE user_id = ? AND deleted_at IS NULL`, userId
+        `SELECT * FROM parents WHERE user_id = ? AND deleted_at IS NULL AND (? IS NULL OR school_id = ?)`, userId, schoolId, schoolId
     );
     if (!parent) throw errors.forbidden("کاربر والد نیست");
     return parent;

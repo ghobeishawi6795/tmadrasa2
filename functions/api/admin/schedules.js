@@ -47,6 +47,14 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const teacher = await db.first(`SELECT * FROM teachers WHERE id = ? AND school_id = ? AND deleted_at IS NULL`, body.teacher_id, user.school_id);
     if (!teacher) throw errors.notFound("معلم پیدا نشد");
 
+    const teaches = await db.first(`SELECT 1 FROM teaching_assignments WHERE school_id = ? AND teacher_id = ? AND class_id = ? AND subject_id = ?`, user.school_id, teacher.id, cls.id, subject.id);
+    if (!teaches) throw errors.validation("این معلم این درس را در این کلاس تدریس نمی‌کند");
+    const overlap = await db.first(`SELECT 1 FROM schedules WHERE school_id = ? AND class_id = ? AND day_of_week = ? AND start_time < ? AND end_time > ?`, user.school_id, cls.id, Number(body.day_of_week), body.end_time, body.start_time);
+    if (overlap) throw errors.conflict("برای این کلاس در این بازه زمانی برنامه دیگری وجود دارد");
+
+    const teacherOverlap = await db.first(`SELECT 1 FROM schedules WHERE school_id = ? AND teacher_id = ? AND day_of_week = ? AND start_time < ? AND end_time > ?`, user.school_id, teacher.id, Number(body.day_of_week), body.end_time, body.start_time);
+    if (teacherOverlap) throw errors.conflict("این معلم در این بازه زمانی برنامه دیگری دارد");
+
     const result = await db.run(
         `INSERT INTO schedules (school_id, class_id, subject_id, teacher_id, day_of_week, start_time, end_time)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,

@@ -11,8 +11,8 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const db = q(env);
     const rows = await db.all(
         `SELECT c.*,
-                (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id = c.id) AS student_count,
-                (SELECT COUNT(*) FROM class_teachers ct WHERE ct.class_id = c.id) AS teacher_count
+                (SELECT COUNT(*) FROM class_students cs JOIN students st ON st.id = cs.student_id AND st.deleted_at IS NULL WHERE cs.class_id = c.id AND cs.school_id = c.school_id) AS student_count,
+                (SELECT COUNT(*) FROM class_teachers ct JOIN teachers t ON t.id = ct.teacher_id AND t.deleted_at IS NULL WHERE ct.class_id = c.id AND ct.school_id = c.school_id) AS teacher_count
            FROM classes c
           WHERE c.school_id = ? AND c.deleted_at IS NULL
           ORDER BY c.name`,
@@ -33,9 +33,14 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     }
 
     const db = q(env);
+    const currentYear = await db.first(
+        `SELECT id FROM academic_years WHERE school_id = ? AND is_current = 1 ORDER BY id DESC LIMIT 1`,
+        user.school_id
+    );
+    if (!currentYear) throw errors.conflict('برای این مدرسه سال تحصیلی جاری تعریف نشده است');
     const result = await db.run(
-        `INSERT INTO classes (school_id, name, grade, education_level) VALUES (?, ?, ?, ?)`,
-        user.school_id, body.name, body.grade || null, educationLevel
+        `INSERT INTO classes (school_id, name, grade, education_level, academic_year_id) VALUES (?, ?, ?, ?, ?)`,
+        user.school_id, body.name, body.grade || null, educationLevel, currentYear?.id || null
     );
     await writeAudit(env, {
         schoolId: user.school_id, actorUserId: user.id, action: "class.create",

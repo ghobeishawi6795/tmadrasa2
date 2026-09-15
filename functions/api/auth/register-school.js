@@ -12,9 +12,13 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const body = await readJson(request);
     requireFields(body, ["school_name", "admin_full_name", "username", "password"]);
 
-    if (typeof body.password !== "string" || body.password.length < 8) throw errors.validation("رمز عبور باید حداقل ۸ کاراکتر باشد");
+    if (typeof body.password !== "string" || body.password.length < 8 || body.password.length > 256) throw errors.validation("رمز عبور باید بین ۸ تا ۲۵۶ کاراکتر باشد");
+    if (typeof body.admin_full_name !== "string" || body.admin_full_name.trim().length < 2 || body.admin_full_name.length > 200) throw errors.validation("نام کامل مدیر نامعتبر است");
     if (typeof body.school_name !== "string" || body.school_name.trim().length < 2 || body.school_name.length > 200) throw errors.validation("نام مدرسه نامعتبر است");
     if (typeof body.username !== "string" || body.username.length < 3 || body.username.length > 100) throw errors.validation("نام کاربری نامعتبر است");
+    if (!/^[A-Za-z0-9_.-]{3,100}$/.test(body.username)) throw errors.validation("نام کاربری فقط شامل حروف انگلیسی، عدد، نقطه، خط تیره و زیرخط باشد");
+    if (body.school_phone !== undefined && String(body.school_phone).length > 50) throw errors.validation("شماره تلفن نامعتبر است");
+    if (body.school_address !== undefined && String(body.school_address).length > 1000) throw errors.validation("آدرس بیش از حد طولانی است");
 
     const db = q(env);
     const ip = request.headers.get("CF-Connecting-IP") || "unknown";
@@ -33,6 +37,15 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
             body.school_name.trim(), body.school_phone || null, body.school_address || null
         );
         schoolId = schoolResult.meta.last_row_id;
+
+        // New schools must always have their initial current academic year.
+        // Keep this creation step together with the school row's lifecycle;
+        // the compensating cleanup below remains only for the later user setup.
+        await db.run(
+            `INSERT INTO academic_years (school_id, name, start_date, end_date, status, is_current)
+             VALUES (?, ?, date('now','-180 days'), date('now','+185 days'), 'open', 1)`,
+            schoolId, 'سال تحصیلی جاری'
+        );
 
         const passwordHash = await hashPassword(body.password);
         const userResult = await db.run(
@@ -54,7 +67,10 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
             await db.run(`DELETE FROM user_roles WHERE user_id = ?`, userId).catch(() => {});
             await db.run(`DELETE FROM users WHERE id = ?`, userId).catch(() => {});
         }
-        if (schoolId) await db.run(`DELETE FROM schools WHERE id = ?`, schoolId).catch(() => {});
+        if (schoolId) {
+            await db.run(`DELETE FROM academic_years WHERE school_id = ?`, schoolId).catch(() => {});
+            await db.run(`DELETE FROM schools WHERE id = ?`, schoolId).catch(() => {});
+        }
         throw e;
     }
 
@@ -62,7 +78,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
         schoolId, actorUserId: userId, action: "school.register",
         entityType: "school", entityId: schoolId,
         meta: { admin_username: body.username }, request,
-    });
+    }).catch(() => {});
 
     return ok({ school_id: schoolId, user_id: userId }, "مدرسه و حساب مدیر با موفقیت ساخته شد");
 });

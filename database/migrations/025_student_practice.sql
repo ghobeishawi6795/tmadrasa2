@@ -19,7 +19,7 @@ CREATE TABLE student_practice_results (
     UNIQUE(student_id, question_id)
 );
 
-INSERT INTO permissions (key) VALUES ('practice.use');
+INSERT OR IGNORE INTO permissions (key) VALUES ('practice.use');
 
-INSERT INTO role_permissions (role_id, permission_id)
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
 SELECT (SELECT id FROM roles WHERE key = 'student'), id FROM permissions WHERE key = 'practice.use';

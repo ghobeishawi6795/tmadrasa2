@@ -13,6 +13,6 @@ INSERT INTO roles (key, label) VALUES ('super_admin', 'سوپرادمین');
 -- unchanged /api/messages/messages endpoint (see functions/api/superadmin/
 -- messages.js for why) -- that endpoint gates on these two permissions,
 -- so super_admin needs them granted like any other role.
-INSERT INTO role_permissions (role_id, permission_id)
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
 SELECT (SELECT id FROM roles WHERE key = 'super_admin'), id
 FROM permissions WHERE key IN ('messages.view', 'messages.create');

@@ -13,7 +13,6 @@ const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
-    await requirePermission(env, user, "school.update");
     const db = q(env);
     const school = await db.first(
         `SELECT name, logo_data, primary_color FROM schools WHERE id = ?`,

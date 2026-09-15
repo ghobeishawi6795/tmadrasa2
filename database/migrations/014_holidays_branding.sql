@@ -17,16 +17,16 @@ CREATE INDEX idx_school_holidays_school ON school_holidays(school_id, holiday_da
 ALTER TABLE schools ADD COLUMN logo_data TEXT;       -- base64 image, nullable
 ALTER TABLE schools ADD COLUMN primary_color TEXT;   -- hex color e.g. #5b5ce2, nullable
 
-INSERT INTO permissions (key) VALUES
+INSERT OR IGNORE INTO permissions (key) VALUES
     ('holidays.view'), ('holidays.manage'), ('school.update');
 
 -- admin: full manage + update
-INSERT INTO role_permissions (role_id, permission_id)
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
 SELECT (SELECT id FROM roles WHERE key='admin'), id FROM permissions
 WHERE key IN ('holidays.view', 'holidays.manage', 'school.update');
 
 -- teacher/student/parent: read-only holiday calendar (branding read is auth-only,
 -- no permission needed -- see /api/school/branding, same pattern as /api/student/me)
-INSERT INTO role_permissions (role_id, permission_id)
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
 SELECT r.id, (SELECT id FROM permissions WHERE key='holidays.view')
 FROM roles r WHERE r.key IN ('teacher', 'student', 'parent');

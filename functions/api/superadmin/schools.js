@@ -53,6 +53,16 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
         body.name, body.phone || null, body.address || null
     );
     const schoolId = result.meta.last_row_id;
+    try {
+        await db.run(
+            `INSERT INTO academic_years (school_id, name, start_date, end_date, status, is_current)
+             VALUES (?, ?, date('now','-180 days'), date('now','+185 days'), 'open', 1)`,
+            schoolId, 'سال تحصیلی جاری'
+        );
+    } catch (e) {
+        await db.run(`DELETE FROM schools WHERE id = ?`, schoolId).catch(() => {});
+        throw e;
+    }
 
     await writeAudit(env, {
         schoolId, actorUserId: user.id, action: "superadmin.school_create",

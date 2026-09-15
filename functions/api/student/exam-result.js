@@ -7,14 +7,14 @@ import { withErrorHandling } from "../_shared/validate.js";
 
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
-    const student = await getStudentRecord(env, user.id);
+    const student = await getStudentRecord(env, user.id, user.school_id);
     const db = q(env);
 
     const url = new URL(request.url);
     const attemptId = url.searchParams.get("attempt_id");
     if (!attemptId) throw errors.validation("attempt_id الزامی است");
 
-    const attempt = await db.first(`SELECT * FROM exam_attempts WHERE id = ?`, attemptId);
+    const attempt = await db.first(`SELECT * FROM exam_attempts WHERE id = ? AND school_id = ?`, attemptId, user.school_id);
     if (!attempt) throw errors.notFound("Attempt پیدا نشد");
     if (attempt.student_id !== student.id) throw errors.forbidden("این نتیجه متعلق به شما نیست");
 
@@ -109,6 +109,7 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
                 correct_numeric: row.type === "numeric" ? correctNumeric : undefined,
                 numeric_tolerance: row.type === "numeric" ? numericTolerance : undefined,
                 correct_text: (row.type === "short_answer" || row.type === "long_answer" || row.type === "fill_blank") ? correctText : undefined,
+                options: attempt.status === "graded" && options ? options : (options ? options.map(o => ({ id: o.id, text: o.text })) : undefined),
                 is_correct: row.is_correct,
                 score: row.score,
                 needs_manual_review: !!row.needs_manual_review,

@@ -31,7 +31,7 @@ function toSafeQuestion(question, options) {
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "exams.view");
-    const student = await getStudentRecord(env, user.id);
+    const student = await getStudentRecord(env, user.id, user.school_id);
     const db = q(env);
 
     const url = new URL(request.url);

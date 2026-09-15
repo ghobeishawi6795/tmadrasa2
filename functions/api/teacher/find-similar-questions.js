@@ -31,7 +31,7 @@ const SIMILARITY_THRESHOLD = 0.4;
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "questions.view");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["text"]);

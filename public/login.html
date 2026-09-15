@@ -162,6 +162,11 @@ button{
     </form>
 
     <div class="hint">شناسه مدرسه را از مدیر سیستم خود دریافت کنید.</div>
+
+    <div id="twoFactorBox" style="display:none;margin-top:18px;padding:14px;background:var(--primary-soft);border-radius:12px">
+      <label for="twoFactorCode" style="margin-top:0">کد ۶ رقمی ورود دومرحله‌ای</label>
+      <input id="twoFactorCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}">
+    </div>
 </div>
 
 <script src="assets/js/api.js"></script>
@@ -195,7 +200,14 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
     btn.textContent = "در حال ورود...";
 
     try {
-        const data = await login(schoolId, username, password);
+        let data = await login(schoolId, username, password);
+        if (data.requires_2fa) {
+            const box=document.getElementById("twoFactorBox"); box.style.display="block";
+            btn.textContent="تأیید کد";
+            const code=document.getElementById("twoFactorCode").value.trim();
+            if(!code){ btn.disabled=false; return; }
+            data = await login(schoolId, username, password, code);
+        }
         window.location.href = roleHome(data.roles);
     } catch (err) {
         errorBox.textContent = err.message || "ورود ناموفق بود";

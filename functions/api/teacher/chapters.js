@@ -27,11 +27,11 @@ export async function upsertChapterFromText(env, { schoolId, teacherId, subjectI
     if (!chapterName || !subjectId) return;
     const db = q(env);
     const existing = await db.first(
-        `SELECT id FROM chapters WHERE teacher_id = ? AND subject_id = ? AND name = ?`,
-        teacherId, subjectId, chapterName
+        `SELECT id FROM chapters WHERE teacher_id = ? AND school_id = ? AND subject_id = ? AND name = ?`,
+        teacherId, schoolId, subjectId, chapterName
     );
     if (existing) return;
-    const maxPos = await db.first(`SELECT COALESCE(MAX(position), -1) as m FROM chapters WHERE teacher_id = ? AND subject_id = ?`, teacherId, subjectId);
+    const maxPos = await db.first(`SELECT COALESCE(MAX(position), -1) as m FROM chapters WHERE teacher_id = ? AND school_id = ? AND subject_id = ?`, teacherId, schoolId, subjectId);
     await db.run(
         `INSERT INTO chapters (school_id, teacher_id, subject_id, name, position) VALUES (?, ?, ?, ?, ?)`,
         schoolId, teacherId, subjectId, chapterName, (maxPos?.m ?? -1) + 1
@@ -41,7 +41,7 @@ export async function upsertChapterFromText(env, { schoolId, teacherId, subjectI
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "questions.view");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const url = new URL(request.url);
     const subjectId = url.searchParams.get("subject_id");
@@ -49,10 +49,10 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
 
     const db = q(env);
     const managed = await db.all(
-        `SELECT c.*, (SELECT COUNT(*) FROM questions q WHERE q.teacher_id = c.teacher_id AND q.subject_id = c.subject_id AND q.chapter = c.name AND q.deleted_at IS NULL) as question_count
-           FROM chapters c WHERE c.teacher_id = ? AND c.subject_id = ?
+        `SELECT c.*, (SELECT COUNT(*) FROM questions q WHERE q.teacher_id = c.teacher_id AND q.school_id = c.school_id AND q.subject_id = c.subject_id AND q.chapter = c.name AND q.deleted_at IS NULL) as question_count
+           FROM chapters c WHERE c.teacher_id = ? AND c.school_id = ? AND c.subject_id = ?
           ORDER BY c.position, c.id`,
-        teacher.id, subjectId
+        teacher.id, user.school_id, subjectId
     );
     const managedNames = new Set(managed.results.map(c => c.name));
 
@@ -60,8 +60,8 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     // promoted into this table (data from before this table existed, or a
     // stray edge case) -- shown the same way, just without a description/id.
     const legacyRows = await db.all(
-        `SELECT DISTINCT chapter FROM questions WHERE teacher_id = ? AND subject_id = ? AND chapter IS NOT NULL AND chapter != '' AND deleted_at IS NULL`,
-        teacher.id, subjectId
+        `SELECT DISTINCT chapter FROM questions WHERE teacher_id = ? AND school_id = ? AND subject_id = ? AND chapter IS NOT NULL AND chapter != '' AND deleted_at IS NULL`,
+        teacher.id, user.school_id, subjectId
     );
     const legacy = legacyRows.results
         .map(r => r.chapter)
@@ -75,7 +75,7 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "questions.create");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["subject_id", "name"]);
@@ -87,8 +87,8 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
 
     const db = q(env);
     const existing = await db.first(
-        `SELECT id FROM chapters WHERE teacher_id = ? AND subject_id = ? AND name = ?`,
-        teacher.id, body.subject_id, name
+        `SELECT id FROM chapters WHERE teacher_id = ? AND school_id = ? AND subject_id = ? AND name = ?`,
+        teacher.id, user.school_id, body.subject_id, name
     );
     if (existing) {
         // creating a chapter that already exists is treated as "just update
@@ -100,7 +100,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
         return ok({ id: existing.id }, "این فصل از قبل وجود داشت — توضیحات به‌روزرسانی شد");
     }
 
-    const maxPos = await db.first(`SELECT COALESCE(MAX(position), -1) as m FROM chapters WHERE teacher_id = ? AND subject_id = ?`, teacher.id, body.subject_id);
+    const maxPos = await db.first(`SELECT COALESCE(MAX(position), -1) as m FROM chapters WHERE teacher_id = ? AND school_id = ? AND subject_id = ?`, teacher.id, user.school_id, body.subject_id);
     const result = await db.run(
         `INSERT INTO chapters (school_id, teacher_id, subject_id, name, description, position) VALUES (?, ?, ?, ?, ?, ?)`,
         user.school_id, teacher.id, body.subject_id, name, body.description || null, (maxPos?.m ?? -1) + 1
@@ -111,12 +111,12 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
 export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "questions.update");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["id"]);
     const db = q(env);
-    const chapter = await db.first(`SELECT * FROM chapters WHERE id = ? AND teacher_id = ?`, body.id, teacher.id);
+    const chapter = await db.first(`SELECT * FROM chapters WHERE id = ? AND teacher_id = ? AND school_id = ?`, body.id, teacher.id, user.school_id);
     if (!chapter) throw errors.notFound("فصل پیدا نشد");
     if (Number(chapter.school_id) !== Number(user.school_id)) throw errors.forbidden("این فصل متعلق به مدرسه شما نیست");
 
@@ -130,8 +130,8 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
 
     if (newName !== chapter.name) {
         const clash = await db.first(
-            `SELECT id FROM chapters WHERE teacher_id = ? AND subject_id = ? AND name = ? AND id != ?`,
-            teacher.id, chapter.subject_id, newName, chapter.id
+            `SELECT id FROM chapters WHERE teacher_id = ? AND school_id = ? AND subject_id = ? AND name = ? AND id != ?`,
+            teacher.id, user.school_id, chapter.subject_id, newName, chapter.id
         );
         if (clash) throw errors.validation("فصلی با این نام از قبل وجود دارد");
     }
@@ -145,8 +145,8 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
         // this text-based join (not an FK) is exactly why a rename needs this
         // explicit cascade instead of happening for free.
         await db.run(
-            `UPDATE questions SET chapter = ? WHERE teacher_id = ? AND subject_id = ? AND chapter = ?`,
-            newName, teacher.id, chapter.subject_id, chapter.name
+            `UPDATE questions SET chapter = ? WHERE teacher_id = ? AND school_id = ? AND subject_id = ? AND chapter = ?`,
+            newName, teacher.id, user.school_id, chapter.subject_id, chapter.name
         );
     }
     return ok(null, "فصل به‌روزرسانی شد");
@@ -155,12 +155,12 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
 export const onRequestDelete = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "questions.delete");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["id"]);
     const db = q(env);
-    const chapter = await db.first(`SELECT id FROM chapters WHERE id = ? AND teacher_id = ?`, body.id, teacher.id);
+    const chapter = await db.first(`SELECT id FROM chapters WHERE id = ? AND teacher_id = ? AND school_id = ?`, body.id, teacher.id, user.school_id);
     if (!chapter) throw errors.notFound("فصل پیدا نشد");
     await db.run(`DELETE FROM chapters WHERE id = ?`, chapter.id);
     return ok(null, "فصل حذف شد (سؤال‌هایی که قبلاً با این فصل ثبت شده‌اند دست‌نخورده می‌مانند)");

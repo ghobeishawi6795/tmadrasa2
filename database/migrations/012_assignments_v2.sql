@@ -13,7 +13,7 @@ ALTER TABLE submissions ADD COLUMN needs_manual_review INTEGER NOT NULL DEFAULT 
 -- every submission_type implemented so far (text/photo/audio) needs a human to grade it;
 -- only future auto-gradable interactive question types would set this to 0
 
-INSERT INTO permissions (key) VALUES ('submissions.create');
+INSERT OR IGNORE INTO permissions (key) VALUES ('submissions.create');
 
-INSERT INTO role_permissions (role_id, permission_id)
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
 SELECT (SELECT id FROM roles WHERE key='student'), (SELECT id FROM permissions WHERE key='submissions.create');

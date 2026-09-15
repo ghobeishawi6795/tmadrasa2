@@ -42,7 +42,7 @@ function assertWithinAttemptDeadline(attempt, exam) {
 
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
-    const student = await getStudentRecord(env, user.id);
+    const student = await getStudentRecord(env, user.id, user.school_id);
     const db = q(env);
     const body = await readJson(request);
     requireFields(body, ["action"]);
@@ -78,9 +78,18 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
 
         const result = await db.run(
             `INSERT INTO exam_attempts (school_id, exam_id, student_id, attempt_number, status, max_score)
-             VALUES (?, ?, ?, ?, 'in_progress', ?)`,
-            user.school_id, exam.id, student.id, existing.results.length + 1, maxScoreRow.total
+             SELECT ?, ?, ?, COALESCE(MAX(attempt_number), 0) + 1, 'in_progress', ?
+               FROM exam_attempts
+              WHERE exam_id = ? AND student_id = ?
+              HAVING COUNT(*) < ?`,
+            user.school_id, exam.id, student.id, maxScoreRow.total, exam.id, student.id, exam.max_attempts
         );
+        if (!result.meta.last_row_id) {
+            const refreshed = await db.all(`SELECT * FROM exam_attempts WHERE exam_id = ? AND student_id = ?`, exam.id, student.id);
+            const resumed = refreshed.results.find(a => a.status === "in_progress");
+            if (resumed) return ok({ attempt_id: resumed.id }, "ادامه Attempt قبلی");
+            throw errors.forbidden("تعداد دفعات مجاز به پایان رسیده است");
+        }
         return created({ attempt_id: result.meta.last_row_id }, "Attempt شروع شد");
     }
 
@@ -95,11 +104,34 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
         assertWithinAttemptDeadline(attempt, exam);
 
         // question must belong to this exam — prevents submitting a foreign question_id
-        const belongs = await db.first(
-            `SELECT 1 FROM exam_questions WHERE exam_id = ? AND question_id = ?`,
-            attempt.exam_id, body.question_id
+        const question = await db.first(
+            `SELECT q.id, q.type
+               FROM exam_questions eq
+               JOIN questions q ON q.id = eq.question_id
+              WHERE eq.exam_id = ? AND eq.question_id = ? AND q.school_id = ? AND q.deleted_at IS NULL`,
+            attempt.exam_id, body.question_id, user.school_id
         );
-        if (!belongs) throw errors.forbidden("این سؤال متعلق به این آزمون نیست");
+        if (!question) throw errors.forbidden("این سؤال متعلق به این آزمون نیست");
+
+        // Validate the answer shape before persisting it. In particular, a
+        // multiple-choice answer must reference an option belonging to this
+        // exact question; otherwise arbitrary option ids could be stored.
+        if (question.type === "multiple_choice") {
+            if (body.selected_option_id == null || !(await db.first(
+                `SELECT 1 FROM question_options WHERE id = ? AND question_id = ?`,
+                body.selected_option_id, question.id
+            ))) throw errors.validation("گزینه انتخابی معتبر نیست");
+        } else if (question.type === "true_false") {
+            if (body.boolean_answer !== true && body.boolean_answer !== false && body.boolean_answer !== 0 && body.boolean_answer !== 1) {
+                throw errors.validation("پاسخ درست/غلط معتبر نیست");
+            }
+        } else if (question.type === "numeric") {
+            const n = Number(body.numeric_answer);
+            if (!Number.isFinite(n)) throw errors.validation("پاسخ عددی معتبر نیست");
+        } else if (["short_answer", "long_answer", "fill_blank"].includes(question.type)) {
+            if (typeof body.text_answer !== "string") throw errors.validation("پاسخ متنی معتبر نیست");
+            if (body.text_answer.length > 10000) throw errors.validation("پاسخ بیش از حد طولانی است");
+        }
 
         await db.run(
             `INSERT INTO exam_answers (attempt_id, question_id, selected_option_id, boolean_answer, numeric_answer, text_answer)
@@ -121,7 +153,8 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
         const attempt = await loadOwnAttempt(db, body.attempt_id, student.id);
         if (attempt.status !== "in_progress") throw errors.forbidden("این Attempt قبلاً ثبت نهایی شده است");
 
-        const exam = await db.first(`SELECT * FROM exams WHERE id = ?`, attempt.exam_id);
+        const exam = await db.first(`SELECT * FROM exams WHERE id = ? AND school_id = ? AND deleted_at IS NULL`, attempt.exam_id, user.school_id);
+        if (!exam) throw errors.notFound("آزمون پیدا نشد");
         const examQuestions = await db.all(
             `SELECT q.*, eq.score as max_q_score, eq.pinned_version FROM exam_questions eq
               JOIN questions q ON q.id = eq.question_id WHERE eq.exam_id = ?`,
@@ -148,7 +181,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
             if (question.type === "multiple_choice") {
                 if (snapshot) {
                     const correctOpt = (snapshot.options || []).find(o => o.is_correct);
-                    isCorrect = correctOpt && answer.selected_option_id === correctOpt.local_id ? 1 : 0;
+                    isCorrect = correctOpt && Number(answer.selected_option_id) === Number(correctOpt.local_id) ? 1 : 0;
                 } else {
                     isCorrect = answer.selected_option_id === question.correct_option_id ? 1 : 0;
                 }

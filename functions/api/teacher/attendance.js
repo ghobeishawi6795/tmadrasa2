@@ -15,7 +15,7 @@ const VALID_STATUSES = ["present", "absent", "late", "excused"];
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "attendance.view");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
     const db = q(env);
     const url = new URL(request.url);
 
@@ -52,7 +52,7 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
 
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
     const db = q(env);
     const body = await readJson(request);
     requireFields(body, ["action"]);
@@ -61,6 +61,8 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
         await requirePermission(env, user, "attendance.create");
         requireFields(body, ["class_id", "session_date"]);
         await assertClassOwnedByTeacher(env, body.class_id, teacher.id, user.school_id);
+        const holiday = await db.first(`SELECT id,title FROM school_holidays WHERE school_id = ? AND holiday_date = ?`, user.school_id, body.session_date);
+        if (holiday) throw errors.validation(`این روز تعطیل است: ${holiday.title}`);
 
         const existing = await db.first(
             `SELECT id FROM attendance_sessions WHERE class_id = ? AND session_date = ?`,

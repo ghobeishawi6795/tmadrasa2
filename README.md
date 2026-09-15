@@ -1,65 +1,54 @@
-# مدرسه — School Platform (اسکلت اجرایی)
+# مدرسه — School Platform
 
-این پروژه روی **Cloudflare Pages Functions + D1** ساخته شده (بدون R2)،
-دقیقاً مطابق معماری‌ای که در تاریخچه پروژه مشخص شده بود:
-Authentication → RBAC → School Isolation → Resource Ownership → Validation → DB.
+سامانه چندمدرسه‌ای مدرسه بر پایه Cloudflare Pages Functions + D1. این نسخه **بدون R2** است و هیچ بخشی از فایل‌های پروژه به R2 وابسته نیست.
 
-## چیزی که در این نسخه کامل و کارکردی ساخته شده
+## امکانات
 
-- **دیتابیس**: تمام ۱۰ Migration (schools تا sessions) + `seeds.sql` برای نقش‌ها و Permissionها
-- **لایه مشترک** (`functions/api/_shared/`):
-  - `response.js` — پاسخ‌های یکسان JSON
-  - `db.js` — Wrapper روی D1
-  - `crypto.js` — هش پسورد با **PBKDF2** (نه SHA-256 ساده) + هش کردن Session Token
-  - `auth.js` — احراز هویت با Bearer Token، هش شدن قبل از جستجو در `sessions.token_hash`، بررسی RBAC
-  - `ownership.js` — تمام قوانین «مالکیت» (معلم فقط کلاس خودش، دانش‌آموز فقط کلاس خودش، ...)
-  - `validate.js` — اعتبارسنجی ورودی + مدیریت خطا
-- **Auth API**: `register-school` (ساخت مدرسه+مدیر اول)، `login` (با Rate Limit روی تلاش‌های ناموفق)، `logout`
-- **سیستم آزمون کامل (قدم ۶ نقشه راه شما)**:
-  - `teacher/exams.js` — ساخت/ویرایش/انتشار/بستن/حذف آزمون
-  - `teacher/questions.js` — بانک سؤال (۵ نوع سؤال)
-  - `teacher/exam-questions.js` — اتصال سؤال به آزمون + ترتیب + امتیاز
-  - `teacher/grading.js` — تصحیح دستی پاسخ‌های تشریحی/کوتاه
-  - `student/exams.js` — لیست و مشاهده آزمون **بدون افشای پاسخ صحیح**
-  - `student/exam-attempt.js` — شروع Attempt، ثبت پاسخ، Submit نهایی + تصحیح خودکار سرور-ساید
-  - `student/exam-result.js` — نمایش نتیجه
-- **نمونه Admin API**: `admin/classes.js`, `admin/students.js`
+### هسته مدرسه
+- مدرسه، مدیر، معلم، دانش‌آموز و والد با RBAC و school isolation
+- کلاس، درس، تخصیص تدریس و برنامه هفتگی
+- سال تحصیلی، اتصال کلاس به سال و تاریخچه enrollment دانش‌آموز
+- پرونده دانش‌آموز و اطلاعات تماس اضطراری
+- حضور و غیاب با جلوگیری از ثبت جلسه در تعطیلات
+- نمرات و کارنامه
+- تکالیف، ارسال پاسخ، تصحیح دستی و فایل‌های موجود در D1
 
-همه این‌ها همان قوانین امنیتی مستندات را رعایت می‌کنند:
-school_id در همه Queryهای حساس، بررسی Ownership جدا از Permission، نمره همیشه سمت سرور محاسبه می‌شود،
-سؤالات تشریحی هرگز خودکار نمره نمی‌گیرند.
+### آزمون و آموزش
+- آزمون و Attempt با تصحیح خودکار سمت سرور
+- بانک سؤال: چندگزینه‌ای، درست/غلط، عددی، کوتاه، تشریحی، جای‌خالی و HTML تعاملی sandboxed
+- نسخه‌بندی سؤال و pin شدن نسخه در آزمون
+- فصل، موضوع، تگ، سختی، علاقه‌مندی، سؤال مشابه و آمار سؤال
+- مهارت‌های آموزشی و بانک عمومی با تأیید مدیر
+- تمرین دانش‌آموز و تمرین سریع بدون اثر روی کارنامه
+- برنامه امتحانات
 
-## قدم ۷ — حضور و غیاب ✅ (تازه اضافه شد)
+### ارتباط مدرسه
+- پیام‌رسانی و اعلان
+- اطلاعیه‌های مدرسه
+- درخواست‌های والدین: مرخصی، گواهی، انتقال، اصلاح اطلاعات، کارنامه و ...
+- جلسات اولیا و معلمان با درخواست/تأیید/انجام/لغو
 
-- `teacher/attendance.js` — ساخت جلسه (با پیش‌فرض «حاضر» برای کل کلاس)، ثبت/ویرایش وضعیت هر دانش‌آموز
-- `student/attendance.js` — سوابق و خلاصه حضور خودش
-- `parent/attendance.js` — فقط با تأیید رابطه در `parent_students`؛ حدس زدن `student_id` نتیجه‌ای نمی‌دهد
+### مدیریت مدرسه
+- داشبورد و گزارش‌های مدیریتی
+- گزارش عملکرد معلم
+- مدیریت انضباط: تشویق، تذکر، تأخیر، غیبت و یادداشت
+- مالی: ردیف شهریه، اختصاص به دانش‌آموز، پرداخت و وضعیت بدهی
+- کتابخانه: کتاب، موجودی، امانت و بازگشت
+- برندینگ مدرسه و تقویم تعطیلات
+- backup دستی D1
+- audit log
 
-## قدم ۸ — نمرات و کارنامه ✅ (تازه اضافه شد)
-
-- `teacher/grades.js` — ثبت/ویرایش نمره؛ فقط اگر واقعاً همان درس را در همان کلاس تدریس می‌کند و دانش‌آموز واقعاً عضو آن کلاس است
-- `_shared/reportcard.js` — محاسبه میانگین وزن‌دار هر درس، همیشه سمت سرور (Frontend نمی‌تواند میانگین را دیکته کند)
-- `student/grades.js`, `student/report-card.js` — نمرات و کارنامه خودش (بر اساس دوره نمره‌دهی)
-- `parent/grades.js` — فقط با تأیید `parent_students`
-
-## قدم ۹ — تکمیل APIهای والد ✅ (تازه اضافه شد)
-
-- `parent/children.js` — لیست فرزندان (فقط از طریق `parent_students`)
-- `parent/dashboard.js` — خلاصه‌ی وضعیت همه فرزندان (تکالیف فعال، آزمون‌های پیش رو، غیبت‌های اخیر)
-- `parent/assignments.js`, `parent/exams.js` — فقط وضعیت/نتیجه، هرگز سؤال یا پاسخ صحیح
-- `parent/schedule.js` — برنامه هفتگی واقعی کلاس فرزند
-
-## قدم ۱۰ — پیام‌رسانی و اعلان‌ها ✅ (تازه اضافه شد)
-
-- `messages/conversations.js` — ساخت گفتگوی مستقیم/گروهی؛ اعضا فقط از همان مدرسه
-- `messages/messages.js` — ارسال، ویرایش/حذف نرم فقط توسط نویسنده، دسترسی فقط برای اعضا
-- `notifications/notifications.js` — لیست + شمارنده خوانده‌نشده + علامت‌گذاری خوانده‌شده
-- `announcements/announcements.js` — انتشار توسط مدیر/معلم با Target مشخص، نمایش فقط به Target درست
-- **اتصال به Eventهای واقعی** (نه دستی): انتشار آزمون → اعلان به دانش‌آموزان کلاس؛ ثبت نمره → اعلان به دانش‌آموز و والدین؛ ثبت غیبت → اعلان به والدین
-
-## چیزی که هنوز باقی مانده (طبق نقشه راه خودتان، قدم ۱۱)
-
-11. Security hardening نهایی (Audit log، حذف کامل وابستگی به `users.role` قدیمی، تست‌های امنیتی end-to-end)، و اتصال Frontend واقعی (فایل دموی `madrese-dashboard.html` همچنان mock است و باید به این APIها وصل شود)
+### امنیت
+- PBKDF2 برای رمز عبور
+- هش Session Token
+- انقضا و لغو نشست
+- token_version برای invalidation نشست‌ها بعد از تغییر رمز
+- rate limit ورود
+- rate limit ثبت مدرسه
+- احراز هویت دومرحله‌ای TOTP با رمزگذاری Secret در D1
+- جداسازی کامل مدرسه‌ها در Queryهای حساس
+- کنترل مالکیت منابع در کنار RBAC
+- تست‌های IDOR و E2E امنیتی
 
 ## راه‌اندازی
 
@@ -67,17 +56,42 @@ school_id در همه Queryهای حساس، بررسی Ownership جدا از Pe
 npm install -g wrangler
 wrangler login
 wrangler d1 create madrese
-# database_id خروجی رو در wrangler.toml جایگزین کن
+```
 
+`database_id` را در `wrangler.toml` قرار دهید و سپس:
+
+```bash
 for f in database/migrations/*.sql; do
   wrangler d1 execute madrese --remote --file="$f"
 done
 wrangler d1 execute madrese --remote --file=database/seeds.sql
-
 wrangler pages deploy public
 ```
 
-اولین حساب مدیر را با `POST /api/auth/register-school` بسازید (فیلدها در همان فایل مشخص است).
+### TOTP
+برای فعال‌سازی 2FA یک Secret رمزنگاری‌شده در D1 استفاده می‌شود. قبل از Deploy این Secret را در Cloudflare تنظیم کنید:
 
-## قدم بعدی پیشنهادی
-Frontend مدیر/معلم/دانش‌آموز (فایل دمو که فرستادید) را به این APIها وصل کنیم — دقیقاً طبق قدم ۱۱.۲۲ تا ۱۱.۲۷ مستندات خودتان (یک `api.js` مشترک با مدیریت 401/403).
+```bash
+wrangler pages secret put TOTP_ENCRYPTION_KEY
+```
+
+مقدار باید ۳۲ بایت باشد؛ به صورت base64 یا ۶۴ کاراکتر hex.
+
+## تست قبل از Production
+
+تمام migrationها روی SQLite تازه از 001 تا آخر تست شده‌اند و `seeds.sql` نیز idempotent است.
+
+برای تست امنیت HTTP:
+
+```bash
+wrangler pages dev public --d1=DB --local
+BASE_URL=http://127.0.0.1:8788 node tests/security-idor.mjs
+```
+
+تست E2E دو مرحله‌ای نیز در `tests/security-e2e.mjs` موجود است.
+
+## نکته مهم D1
+
+Migrationهای قدیمی به نقش‌ها و Permissionهای seed شده وابستگی داشتند. این نسخه RBAC پایه را از migration 002 bootstrap می‌کند و `seeds.sql` را idempotent کرده است؛ بنابراین نصب تازه از ابتدا شکست نمی‌خورد.
+
+این پروژه عمداً **R2 ندارد**.

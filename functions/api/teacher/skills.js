@@ -12,7 +12,7 @@ import { requireFields, readJson, withErrorHandling, requireMaxLength } from "..
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "questions.view");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const db = q(env);
     const skills = await db.all(
@@ -25,7 +25,7 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "questions.create");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["name"]);
@@ -43,16 +43,16 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
 export const onRequestDelete = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "questions.create");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["id"]);
 
     const db = q(env);
-    const skill = await db.first(`SELECT id, teacher_id FROM learning_skills WHERE id = ?`, body.id);
+    const skill = await db.first(`SELECT id, teacher_id FROM learning_skills WHERE id = ? AND school_id = ?`, body.id, user.school_id);
     if (!skill) throw errors.notFound("مهارت پیدا نشد");
     if (skill.teacher_id !== teacher.id) throw errors.forbidden("این مهارت متعلق به شما نیست");
 
-    await db.run(`UPDATE learning_skills SET is_active = 0 WHERE id = ?`, skill.id);
+    await db.run(`UPDATE learning_skills SET is_active = 0 WHERE id = ? AND school_id = ?`, skill.id, user.school_id);
     return ok(null, "مهارت حذف شد");
 });

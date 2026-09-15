@@ -14,7 +14,7 @@ const VALID_SOURCES = ["assignment", "exam", "manual", "final"];
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "grades.view");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
     const db = q(env);
     const url = new URL(request.url);
 
@@ -29,7 +29,7 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
            FROM grades g
            JOIN students s ON s.id = g.student_id
            JOIN users u ON u.id = s.user_id
-           JOIN class_students cs ON cs.student_id = g.student_id AND cs.class_id = ?
+           JOIN class_students cs ON cs.student_id = g.student_id AND cs.class_id = ? AND cs.school_id = g.school_id
           WHERE g.subject_id = ? AND g.teacher_id = ? AND g.school_id = ?
             AND (? IS NULL OR g.grade_period_id = ?)
           ORDER BY u.full_name`,
@@ -41,7 +41,7 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "grades.create");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["student_id", "class_id", "subject_id", "score", "max_score"]);
@@ -91,7 +91,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
 export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "grades.update");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["id"]);

@@ -24,7 +24,7 @@ function isoWeekLabel(dateInput) {
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "questions.view");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const url = new URL(request.url);
     const questionId = url.searchParams.get("question_id");

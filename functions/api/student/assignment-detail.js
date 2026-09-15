@@ -13,7 +13,7 @@ import { sanitizeForStudent } from "../_shared/interactive.js";
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "assignments.view");
-    const student = await getStudentRecord(env, user.id);
+    const student = await getStudentRecord(env, user.id, user.school_id);
 
     const url = new URL(request.url);
     const id = url.searchParams.get("id");

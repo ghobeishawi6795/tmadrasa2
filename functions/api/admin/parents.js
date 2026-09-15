@@ -30,6 +30,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     await requirePermission(env, user, "students.create");
     const body = await readJson(request);
     requireFields(body, ["full_name", "username", "password"]);
+    if (typeof body.password !== "string" || body.password.length < 8) throw errors.validation("رمز عبور باید حداقل ۸ کاراکتر باشد");
 
     const db = q(env);
     const existing = await db.first(

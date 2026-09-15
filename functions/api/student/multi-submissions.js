@@ -22,7 +22,7 @@ const AUTO_GRADED_TYPES = ["match", "drag_drop"];
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "submissions.create");
-    const student = await getStudentRecord(env, user.id);
+    const student = await getStudentRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["assignment_id", "answers"]);

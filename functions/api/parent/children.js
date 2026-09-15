@@ -7,7 +7,7 @@ import { withErrorHandling } from "../_shared/validate.js";
 
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
-    const parent = await getParentRecord(env, user.id);
+    const parent = await getParentRecord(env, user.id, user.school_id);
     const db = q(env);
 
     const rows = await db.all(
@@ -15,8 +15,8 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
            FROM parent_students ps
            JOIN students st ON st.id = ps.student_id
            JOIN users u ON u.id = st.user_id
-           LEFT JOIN class_students cs ON cs.student_id = st.id
-           LEFT JOIN classes c ON c.id = cs.class_id AND c.deleted_at IS NULL
+           LEFT JOIN student_enrollments se ON se.student_id = st.id AND se.school_id = st.school_id AND se.status = 'active' AND se.academic_year_id = (SELECT id FROM academic_years WHERE school_id = st.school_id AND is_current = 1 ORDER BY id DESC LIMIT 1)
+           LEFT JOIN classes c ON c.id = se.class_id AND c.deleted_at IS NULL
           WHERE ps.parent_id = ? AND ps.school_id = ? AND st.deleted_at IS NULL`,
         parent.id, user.school_id
     );

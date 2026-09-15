@@ -33,6 +33,9 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     await requirePermission(env, user, "students.create");
     const body = await readJson(request);
     requireFields(body, ["full_name", "username", "password", "class_id"]);
+    if (typeof body.full_name !== "string" || !body.full_name.trim() || body.full_name.trim().length > 200) throw errors.validation("نام دانش‌آموز نامعتبر است");
+    if (typeof body.username !== "string" || !body.username.trim() || body.username.length > 100) throw errors.validation("نام کاربری نامعتبر است");
+    if (typeof body.password !== "string" || body.password.length < 8) throw errors.validation("رمز عبور باید حداقل ۸ کاراکتر باشد");
 
     const db = q(env);
 
@@ -48,8 +51,11 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     );
     if (existing) throw errors.conflict("این نام کاربری قبلاً استفاده شده — یک نام کاربری دیگر انتخاب کنید");
 
+    const currentYear = await db.first(`SELECT id FROM academic_years WHERE school_id = ? AND is_current = 1 ORDER BY id DESC LIMIT 1`, user.school_id);
+    if (!currentYear) throw errors.conflict('برای این مدرسه سال تحصیلی جاری تعریف نشده است');
     const passwordHash = await hashPassword(body.password);
     const studentRole = await db.first(`SELECT id FROM roles WHERE key = 'student'`);
+    if (!studentRole) throw errors.server('نقش دانش‌آموز در پایگاه‌داده وجود ندارد');
 
     // BUGFIX: this used to be 4 separate INSERTs with manual cleanup-on-error
     // (D1 can't bind a generated id into a later statement before it exists),
@@ -81,6 +87,11 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
                   VALUES (?, (SELECT id FROM students WHERE user_id = (SELECT id FROM users WHERE school_id = ? AND username = ?)), ?)`,
             params: [cls.id, user.school_id, body.username, user.school_id],
         },
+        {
+            sql: `INSERT INTO student_enrollments (school_id, academic_year_id, student_id, class_id, status, joined_at)
+                  VALUES (?, ?, (SELECT id FROM students WHERE user_id = (SELECT id FROM users WHERE school_id = ? AND username = ?)), ?, 'active', datetime('now'))`,
+            params: [user.school_id, currentYear.id, user.school_id, body.username, cls.id],
+        },
     ]);
 
     const created_ = await db.first(
@@ -90,7 +101,6 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     );
     const newUserId = created_.user_id;
     const studentId = created_.student_id;
-
     // best-effort: a logging failure here must never make an already-successful
     // registration look like it failed to the person who just submitted the form
     await writeAudit(env, {

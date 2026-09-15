@@ -362,3 +362,11 @@ td{
     font-size:11px;
 }
 
+
+/* Small shared utility classes used by several of the newer admin/teacher/
+   student/parent pages (finance, library, discipline, account settings,
+   etc.) -- kept here once instead of copy-pasted per page. A page-local
+   <style> block with the same selector still wins where it exists. */
+.mini{ font-size:12px; color:var(--muted); }
+.field{ padding:10px; background:var(--surface2); border-radius:10px; }
+.account-block h4{ margin:0 0 8px; font-size:14px; }

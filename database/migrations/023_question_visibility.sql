@@ -18,6 +18,6 @@
 
 ALTER TABLE questions ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private';
 
-INSERT INTO permissions (key) VALUES ('questions.moderate');
-INSERT INTO role_permissions (role_id, permission_id)
+INSERT OR IGNORE INTO permissions (key) VALUES ('questions.moderate');
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
 SELECT (SELECT id FROM roles WHERE key = 'admin'), (SELECT id FROM permissions WHERE key = 'questions.moderate');

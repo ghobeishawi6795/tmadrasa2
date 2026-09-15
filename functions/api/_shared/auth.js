@@ -25,15 +25,24 @@ export async function authenticate(request, env) {
     const user = await db.first(
         `SELECT * FROM users WHERE id = ? AND deleted_at IS NULL`, session.user_id
     );
+    if (!user || (session.token_version !== undefined && Number(session.token_version) !== Number(user.token_version || 0))) throw errors.unauthorized("نشست نیاز به ورود دوباره دارد");
     if (!user || !user.is_active) throw errors.unauthorized("کاربر فعال نیست");
     if (user.school_id !== 0) {
-        const school = await db.first(`SELECT active FROM schools WHERE id = ?`, user.school_id);
+        const school = await db.first(`SELECT active,subscription_status,subscription_expires_at,trial_ends_at FROM schools WHERE id = ?`, user.school_id);
         if (!school || !school.active) throw errors.unauthorized("مدرسه غیرفعال شده است");
+        const now = Date.now();
+        const expires = school.subscription_expires_at ? Date.parse(school.subscription_expires_at) : null;
+        const trial = school.trial_ends_at ? Date.parse(school.trial_ends_at) : null;
+        if (school.subscription_status === "suspended" ||
+            (school.subscription_status === "cancelled" && expires && expires < now) ||
+            (expires && expires < now && (!trial || trial < now))) {
+            throw errors.unauthorized("اشتراک مدرسه منقضی شده است");
+        }
     }
 
     const roleRows = await db.all(
-        `SELECT r.key FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ?`,
-        user.id
+        `SELECT r.key FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND ur.school_id = ?`,
+        user.id, user.school_id
     );
     const roles = roleRows.results.map(r => r.key);
 
@@ -49,12 +58,12 @@ export async function createSession(env, user, request) {
     const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
     await db.run(
-        `INSERT INTO sessions (user_id, school_id, token_hash, ip_address, user_agent, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions (user_id, school_id, token_hash, ip_address, user_agent, expires_at, token_version)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         user.id, user.school_id, tokenHash,
         request.headers.get("CF-Connecting-IP") || null,
         request.headers.get("User-Agent") || null,
-        expiresAt
+        expiresAt, user.token_version || 0
     );
 
     return { token: rawToken, expiresAt }; // raw token returned to client ONCE
@@ -73,9 +82,9 @@ export async function requirePermission(env, user, permissionKey) {
            FROM user_roles ur
            JOIN role_permissions rp ON rp.role_id = ur.role_id
            JOIN permissions p ON p.id = rp.permission_id
-          WHERE ur.user_id = ? AND p.key = ?
+          WHERE ur.user_id = ? AND ur.school_id = ? AND p.key = ?
           LIMIT 1`,
-        user.id, permissionKey
+        user.id, user.school_id, permissionKey
     );
     if (!row) throw errors.forbidden(`دسترسی «${permissionKey}» را ندارید`);
 }

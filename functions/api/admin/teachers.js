@@ -25,6 +25,9 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     await requirePermission(env, user, "teachers.create");
     const body = await readJson(request);
     requireFields(body, ["full_name", "username", "password"]);
+    if (typeof body.full_name !== "string" || !body.full_name.trim() || body.full_name.trim().length > 200) throw errors.validation("نام معلم نامعتبر است");
+    if (typeof body.username !== "string" || !body.username.trim() || body.username.length > 100) throw errors.validation("نام کاربری نامعتبر است");
+    if (typeof body.password !== "string" || body.password.length < 8) throw errors.validation("رمز عبور باید حداقل ۸ کاراکتر باشد");
 
     const db = q(env);
     const existing = await db.first(

@@ -23,7 +23,7 @@ function validateScoreAndPosition(rawScore, rawPosition) {
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "exams.view");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const url = new URL(request.url);
     const examId = url.searchParams.get("exam_id");
@@ -45,7 +45,7 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "exams.update");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["exam_id", "question_id"]);
@@ -74,20 +74,32 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
 export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "exams.update");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["exam_id", "items"]);
     const exam = await loadExamOwnedByTeacher(env, body.exam_id, teacher.id, user.school_id);
     if (exam.status !== "draft") throw errors.forbidden("فقط آزمون پیش‌نویس قابل ویرایش سؤال است");
 
+    if (!Array.isArray(body.items) || body.items.length === 0) throw errors.validation("items باید یک آرایه غیرخالی باشد");
+    const ids = body.items.map(it => Number(it.question_id));
+    if (ids.some(id => !Number.isInteger(id) || id <= 0) || new Set(ids).size !== ids.length) {
+        throw errors.validation("شناسه سؤال‌ها نامعتبر یا تکراری است");
+    }
+    const positions = body.items.map(it => validateScoreAndPosition(it.score, it.position).position);
+    if (new Set(positions).size !== positions.length) throw errors.validation("موقعیت سؤالات نباید تکراری باشد");
+
     const db = q(env);
-    // backend re-validates ordering/scores; never trusts client-only ordering blindly beyond this write
+    const existing = await db.all(
+        `SELECT question_id FROM exam_questions WHERE exam_id = ? AND question_id IN (${ids.map(() => "?").join(",")})`,
+        exam.id, ...ids
+    );
+    if (existing.results.length !== ids.length) throw errors.validation("همه سؤال‌های ارسالی متعلق به همین آزمون نیستند");
     const statements = body.items.map(it => {
         const { score, position } = validateScoreAndPosition(it.score, it.position);
         return {
             sql: `UPDATE exam_questions SET position = ?, score = ? WHERE exam_id = ? AND question_id = ?`,
-            params: [position, score, exam.id, it.question_id],
+            params: [position, score, exam.id, Number(it.question_id)],
         };
     });
     await db.batch(statements);
@@ -97,7 +109,7 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
 export const onRequestDelete = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "exams.update");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["exam_id", "question_id"]);

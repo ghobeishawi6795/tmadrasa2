@@ -82,7 +82,7 @@ const NAV_ITEMS = [
     { key: "grades",        icon: "🎯", label: "کارنامه" },
     { key: "messages",      icon: "💬", label: "پیام‌ها" },
     { key: "announcements", icon: "📢", label: "اطلاعیه‌ها" },
-    { key: "profile",       icon: "👤", label: "پروفایل" },
+    { key: "profile",       icon: "👤", label: "پرونده و خدمات", href: "services.html" },
     { key: "help",          icon: "❓", label: "راهنما" },
 ];
 
@@ -103,7 +103,6 @@ async function render(key) {
         else if (key === "grades") await renderGrades();
         else if (key === "messages") await renderMessages();
         else if (key === "announcements") await renderAnnouncements();
-        else if (key === "profile") await renderProfile();
         else if (key === "help") renderHelp();
     } catch (e) {
         content.innerHTML = `<div class="card"><div style="color:var(--red)">خطا در بارگذاری: ${escapeHtml(e.message)}</div></div>`;
@@ -1446,18 +1445,6 @@ async function renderAnnouncements() {
    PROFILE (read-only -- from the logged-in session, no API for editing)
 ========================================================= */
 
-async function renderProfile() {
-    const user = currentSession.user;
-    document.getElementById("content").innerHTML = `
-        <div class="page-head"><div><div class="page-title">پروفایل</div><div class="page-subtitle">اطلاعات حساب کاربری</div></div></div>
-        <div class="card" style="max-width:400px">
-            <div class="form-group"><label>نام کامل</label><div>${escapeHtml(user.full_name)}</div></div>
-            <div class="form-group"><label>شناسه مدرسه</label><div>${escapeHtml(user.school_id)}</div></div>
-        </div>
-        <div class="page-subtitle" style="margin-top:10px">اطلاعات بیشتر (نام کاربری، تلفن و ...) و امکان ویرایش پروفایل هنوز در API وجود ندارد.</div>
-    `;
-}
-
 /* =========================================================
    HELP / GUIDE
 ========================================================= */
@@ -1471,7 +1458,7 @@ const HELP_SECTIONS = [
     { icon: "🎯", title: "کارنامه", body: "میانگین نمرات هر درس به همراه منبع هر نمره (تکلیف/آزمون/دستی) و بازخورد معلم — دکمه‌ی چاپ برای خروجی PDF هم موجود است." },
     { icon: "💬", title: "پیام‌ها", body: "گفتگوهایی که معلم یا مدیر مدرسه با تو شروع کرده — می‌توانی پاسخ بدهی، ولی نمی‌توانی خودت گفتگوی جدید شروع کنی." },
     { icon: "📢", title: "اطلاعیه‌ها", body: "اطلاعیه‌های عمومی یا مخصوص دانش‌آموزان که مدیر مدرسه منتشر کرده." },
-    { icon: "👤", title: "پروفایل", body: "اطلاعات پایه‌ی حساب کاربری‌ات (نام کامل و شناسه مدرسه)." },
+    { icon: "👤", title: "پرونده و خدمات", body: "پرونده‌ی کامل تو (تولد، کلاس، شناسه دانش‌آموزی)، وضعیت شهریه، برنامه امتحانات، سوابق انضباطی، امانت کتابخانه، و تنظیمات حساب کاربری (تغییر رمز، ورود دومرحله‌ای، مدیریت نشست‌های فعال)." },
 ];
 
 function renderHelp() {

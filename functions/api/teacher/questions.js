@@ -80,6 +80,8 @@ export async function createQuestionRecord(env, { schoolId, teacherId, body }) {
             throw errors.validation("سؤال چندگزینه‌ای باید حداقل دو گزینه داشته باشد");
         }
         if (body.options.some(o => typeof o.is_correct !== "boolean")) throw errors.validation("is_correct باید boolean باشد");
+        if (body.options.some(o => typeof o.text !== "string" || !o.text.trim())) throw errors.validation("متن همه گزینه‌ها الزامی است");
+        if (body.options.some(o => o.text.length > 2000)) throw errors.validation("متن گزینه نباید بیشتر از ۲۰۰۰ نویسه باشد");
         const correctCount = body.options.filter(o => o.is_correct).length;
         if (correctCount !== 1) throw errors.validation("دقیقاً یک گزینه صحیح باید مشخص شود");
     }
@@ -137,7 +139,7 @@ export async function createQuestionRecord(env, { schoolId, teacherId, body }) {
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "questions.view");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const url = new URL(request.url);
     const scope = url.searchParams.get("scope") || "mine"; // mine | public
@@ -223,7 +225,7 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "questions.create");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["type", "text"]);
@@ -238,7 +240,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
 export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "questions.update");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["id", "text"]);
@@ -272,6 +274,8 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
             throw errors.validation("سؤال چندگزینه‌ای باید حداقل دو گزینه داشته باشد");
         }
         if (body.options.some(o => typeof o.is_correct !== "boolean")) throw errors.validation("is_correct باید boolean باشد");
+        if (body.options.some(o => typeof o.text !== "string" || !o.text.trim())) throw errors.validation("متن همه گزینه‌ها الزامی است");
+        if (body.options.some(o => o.text.length > 2000)) throw errors.validation("متن گزینه نباید بیشتر از ۲۰۰۰ نویسه باشد");
         const correctCount = body.options.filter(o => o.is_correct).length;
         if (correctCount !== 1) throw errors.validation("دقیقاً یک گزینه صحیح باید مشخص شود");
     }
@@ -280,6 +284,7 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     if (finalSubjectId !== null) await assertSubjectInSchool(env, finalSubjectId, user.school_id);
     if (type === "true_false" && body.correct_boolean !== undefined && typeof body.correct_boolean !== "boolean") throw errors.validation("correct_boolean باید boolean باشد");
     if (type === "numeric" && body.correct_numeric !== undefined && (!Number.isFinite(Number(body.correct_numeric)))) throw errors.validation("correct_numeric نامعتبر است");
+    if (type === "numeric" && body.numeric_tolerance !== undefined && (!Number.isFinite(Number(body.numeric_tolerance)) || Number(body.numeric_tolerance) < 0)) throw errors.validation("numeric_tolerance باید عددی صفر یا مثبت باشد");
     const gradingMode = type === "fill_blank" && body.grading_mode === undefined ? question.grading_mode : resolveGradingMode(type, body.grading_mode);
     if (type === "fill_blank" && gradingMode === "auto" && !(body.correct_text && String(body.correct_text).trim())) {
         throw errors.validation("برای جای‌خالی با تصحیح خودکار، پاسخ صحیح الزامی است (یا نحوه‌ی تصحیح را «دستی» انتخاب کنید)");

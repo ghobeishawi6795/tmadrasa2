@@ -20,7 +20,7 @@ async function loadOwnQuestion(db, questionId, teacherId, schoolId) {
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "questions.view");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const url = new URL(request.url);
     const questionId = url.searchParams.get("question_id");
@@ -32,8 +32,8 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const rows = await db.all(
         `SELECT s.id, s.name, qs.weight FROM question_skills qs
            JOIN learning_skills s ON s.id = qs.skill_id
-          WHERE qs.question_id = ? AND s.is_active = 1`,
-        questionId
+          WHERE qs.question_id = ? AND s.school_id = ? AND s.is_active = 1`,
+        questionId, user.school_id
     );
     return ok(rows.results);
 });
@@ -41,7 +41,7 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "questions.create");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["question_id", "skill_id"]);
@@ -51,7 +51,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const db = q(env);
     await loadOwnQuestion(db, body.question_id, teacher.id, user.school_id);
     const skill = await db.first(
-        `SELECT id FROM learning_skills WHERE id = ? AND teacher_id = ? AND is_active = 1`, body.skill_id, teacher.id
+        `SELECT id FROM learning_skills WHERE id = ? AND teacher_id = ? AND school_id = ? AND is_active = 1`, body.skill_id, teacher.id, user.school_id
     );
     if (!skill) throw errors.notFound("مهارت پیدا نشد");
 
@@ -66,7 +66,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
 export const onRequestDelete = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "questions.create");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["question_id", "skill_id"]);

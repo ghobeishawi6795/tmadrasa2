@@ -5,6 +5,7 @@ import { createSession } from "../_shared/auth.js";
 import { ok, errors } from "../_shared/response.js";
 import { requireFields, readJson, withErrorHandling } from "../_shared/validate.js";
 import { writeAudit } from "../_shared/audit.js";
+import { decryptTotpSecret, verifyTotp, consumeTotpStep } from "../_shared/totp.js";
 
 const MAX_FAILED_ATTEMPTS = 5;
 const MAX_IP_FAILED_ATTEMPTS = 30;
@@ -54,18 +55,39 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
             schoolId: body.school_id, actorUserId: user ? user.id : null,
             action: "auth.login_failed", entityType: "user", entityId: user ? user.id : null,
             meta: { username: body.username }, request,
-        });
+        }).catch(() => {});
         throw errors.unauthorized("نام کاربری یا رمز عبور اشتباه است");
     }
     if (!user.is_active) throw errors.forbidden("حساب کاربری غیرفعال است");
+
+    if (user.two_factor_enabled) {
+        if (!body.two_factor_code) return ok({ requires_2fa: true, user: { id:user.id, full_name:user.full_name, school_id:user.school_id } }, "کد ورود دومرحله‌ای را وارد کنید");
+        let verified = false;
+        try {
+            const secret = await decryptTotpSecret(env, user.totp_secret_enc);
+            const step = await verifyTotp(secret, body.two_factor_code);
+            verified = step !== null && await consumeTotpStep(db, user.id, step);
+        } catch {}
+        if (!verified) {
+            const h = await (await import('../_shared/crypto.js')).hashToken(String(body.two_factor_code||''));
+            const backup = await db.first(`SELECT id FROM two_factor_backup_codes WHERE user_id=? AND code_hash=? AND used_at IS NULL LIMIT 1`, user.id, h);
+            if (backup) { const consumed = await db.run(`UPDATE two_factor_backup_codes SET used_at=datetime('now') WHERE id=? AND used_at IS NULL`, backup.id); if (consumed.meta?.changes === 1) verified=true; }
+        }
+        if (!verified) {
+            await db.run(`INSERT INTO login_attempts (school_id, username, ip_address, success) VALUES (?, ?, ?, 0)`, body.school_id, body.username, ip);
+            throw errors.unauthorized("کد ورود دومرحله‌ای صحیح نیست");
+        }
+    }
 
     // A school can be deactivated by the super-admin -- that must lock out
     // every user of that school, not just accounts individually disabled.
     // school_id 0 is the reserved super-admin system school (always
     // active:0 by design) and is exempt from this check.
     if (user.school_id !== 0) {
-        const school = await db.first(`SELECT active FROM schools WHERE id = ?`, user.school_id);
+        const school = await db.first(`SELECT active,subscription_status,subscription_expires_at,trial_ends_at FROM schools WHERE id = ?`, user.school_id);
         if (!school || !school.active) throw errors.forbidden("مدرسه غیرفعال شده است");
+        const now=Date.now(); const expires=school.subscription_expires_at?Date.parse(school.subscription_expires_at):null; const trial=school.trial_ends_at?Date.parse(school.trial_ends_at):null;
+        if (school.subscription_status === "suspended" || (school.subscription_status === "cancelled" && expires && expires < now) || (expires && expires < now && (!trial || trial < now))) throw errors.forbidden("اشتراک مدرسه منقضی شده است");
     }
 
     const { token, expiresAt } = await createSession(env, user, request);
@@ -73,11 +95,11 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     await writeAudit(env, {
         schoolId: user.school_id, actorUserId: user.id,
         action: "auth.login_success", entityType: "user", entityId: user.id, request,
-    });
+    }).catch(() => {});
 
     const roleRows = await db.all(
-        `SELECT r.key FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ?`,
-        user.id
+        `SELECT r.key FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND ur.school_id = ?`,
+        user.id, user.school_id
     );
 
     return ok({

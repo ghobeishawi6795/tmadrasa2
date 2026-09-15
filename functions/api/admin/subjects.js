@@ -21,6 +21,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     await requirePermission(env, user, "subjects.create");
     const body = await readJson(request);
     requireFields(body, ["name"]);
+    if (typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 200) throw errors.validation("نام درس نامعتبر است");
 
     const db = q(env);
     const result = await db.run(
@@ -42,6 +43,7 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     await requirePermission(env, user, "subjects.update");
     const body = await readJson(request);
     requireFields(body, ["id", "name"]);
+    if (typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 200) throw errors.validation("نام درس نامعتبر است");
 
     const db = q(env);
     const subject = await db.first(

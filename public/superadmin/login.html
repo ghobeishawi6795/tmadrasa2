@@ -145,6 +145,10 @@ button{ font-family:inherit; cursor:pointer; }
 
         <button type="submit" class="submit-btn" id="submitBtn">ورود</button>
 
+        <div id="twoFactorBox" style="display:none;margin-top:18px;padding:14px;background:var(--primary-soft);border-radius:12px">
+          <label for="twoFactorCode" style="margin-top:0">کد ۶ رقمی ورود دومرحله‌ای</label>
+          <input id="twoFactorCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}">
+        </div>
         <div class="error-box" id="errorBox"></div>
     </form>
 </div>
@@ -175,7 +179,14 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
     btn.textContent = "در حال ورود...";
 
     try {
-        const data = await login(SYSTEM_SCHOOL_ID, username, password);
+        let data = await login(SYSTEM_SCHOOL_ID, username, password);
+        if (data.requires_2fa) {
+            const box = document.getElementById("twoFactorBox");
+            box.style.display = "block";
+            const code = document.getElementById("twoFactorCode").value.trim();
+            if (!code) { btn.disabled = false; btn.textContent = "تأیید کد"; return; }
+            data = await login(SYSTEM_SCHOOL_ID, username, password, code);
+        }
         if (!(data.roles || []).includes("super_admin")) {
             clearSession();
             throw new Error("این حساب دسترسی سوپرادمین ندارد");

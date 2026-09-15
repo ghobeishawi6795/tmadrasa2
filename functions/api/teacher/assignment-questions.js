@@ -14,7 +14,7 @@ import { withErrorHandling } from "../_shared/validate.js";
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "assignments.view");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const url = new URL(request.url);
     const assignmentId = url.searchParams.get("assignment_id");

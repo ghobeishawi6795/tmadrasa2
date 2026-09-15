@@ -71,8 +71,9 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     requireFields(body, ["id", "body"]);
     requireMaxLength(body.body, 5000, "متن پیام");
 
-    const message = await db.first(`SELECT * FROM messages WHERE id = ?`, body.id);
+    const message = await db.first(`SELECT m.* FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE m.id = ? AND c.school_id = ?`, body.id, user.school_id);
     if (!message || message.deleted_at) throw errors.notFound("پیام پیدا نشد");
+    await assertMember(db, message.conversation_id, user.id);
     if (message.sender_id !== user.id) throw errors.forbidden("فقط نویسنده پیام می‌تواند آن را ویرایش کند");
 
     await db.run(`UPDATE messages SET body = ?, edited_at = datetime('now') WHERE id = ?`, body.body, message.id);
@@ -85,8 +86,9 @@ export const onRequestDelete = withErrorHandling(async ({ request, env }) => {
     const body = await readJson(request);
     requireFields(body, ["id"]);
 
-    const message = await db.first(`SELECT * FROM messages WHERE id = ?`, body.id);
+    const message = await db.first(`SELECT m.* FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE m.id = ? AND c.school_id = ?`, body.id, user.school_id);
     if (!message || message.deleted_at) throw errors.notFound("پیام پیدا نشد");
+    await assertMember(db, message.conversation_id, user.id);
     if (message.sender_id !== user.id) throw errors.forbidden("فقط نویسنده پیام می‌تواند آن را حذف کند");
 
     await db.run(`UPDATE messages SET deleted_at = datetime('now') WHERE id = ?`, message.id);

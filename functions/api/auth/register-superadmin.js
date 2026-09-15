@@ -17,7 +17,11 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const body = await readJson(request);
     requireFields(body, ["full_name", "username", "password"]);
 
-    if (typeof body.password !== "string" || body.password.length < 8) throw errors.validation("رمز عبور باید حداقل ۸ کاراکتر باشد");
+    if (typeof body.password !== "string" || body.password.length < 8 || body.password.length > 256) throw errors.validation("رمز عبور باید بین ۸ تا ۲۵۶ کاراکتر باشد");
+    if (typeof body.full_name !== "string" || body.full_name.trim().length < 2 || body.full_name.length > 200) throw errors.validation("نام کامل نامعتبر است");
+    if (typeof body.username !== "string" || !/^[A-Za-z0-9_.-]{3,100}$/.test(body.username)) throw errors.validation("نام کاربری فقط شامل حروف انگلیسی، عدد، نقطه، خط تیره و زیرخط باشد");
+    if (body.phone !== undefined && String(body.phone).length > 50) throw errors.validation("شماره تلفن نامعتبر است");
+    if (body.email !== undefined && String(body.email).length > 254) throw errors.validation("ایمیل نامعتبر است");
 
     const db = q(env);
 
@@ -69,7 +73,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
         schoolId: SYSTEM_SCHOOL_ID, actorUserId: userId, action: "superadmin.register",
         entityType: "user", entityId: userId,
         meta: { username: body.username }, request,
-    });
+    }).catch(() => {});
 
     return ok({ user_id: userId }, "حساب سوپرادمین ساخته شد");
 });

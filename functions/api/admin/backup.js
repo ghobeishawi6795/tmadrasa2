@@ -29,13 +29,24 @@ const DIRECT_TABLES = [
     "attendance_sessions", "attendance_records",
     "conversations", "conversation_members",
     "announcements",
-    // BUGFIX: these 7 all carry school_id directly but were missing from
-    // the export entirely -- grade_periods/chapters/learning_skills/
-    // school_holidays/notifications/user_roles were user-reported gaps;
-    // student_practice_results was found during the same audit.
     "grade_periods", "chapters", "learning_skills", "school_holidays",
     "notifications", "user_roles", "student_practice_results",
+    "academic_years", "discipline_records",
+    "exam_schedules", "parent_requests", "parent_meetings",
+    "fee_items", "student_fees", "payments", "expenses",
+    "library_books", "library_loans",
 ];
+
+async function rowsByIds(db, table, column, ids, chunkSize = 80) {
+    if (!ids.length) return [];
+    const out = [];
+    for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const rows = await db.all(`SELECT * FROM ${table} WHERE ${column} IN (${chunk.map(() => "?").join(",")})`, ...chunk);
+        out.push(...rows.results);
+    }
+    return out;
+}
 
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user, roles } = await authenticate(request, env);
@@ -72,47 +83,27 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const examIds = dump.exams.map(e => e.id);
     const attemptIds = dump.exam_attempts.map(a => a.id);
 
-    dump.question_options = questionIds.length
-        ? (await db.all(`SELECT * FROM question_options WHERE question_id IN (${questionIds.map(() => "?").join(",")})`, ...questionIds)).results
-        : [];
-    dump.exam_questions = examIds.length
-        ? (await db.all(`SELECT * FROM exam_questions WHERE exam_id IN (${examIds.map(() => "?").join(",")})`, ...examIds)).results
-        : [];
-    dump.exam_answers = attemptIds.length
-        ? (await db.all(`SELECT * FROM exam_answers WHERE attempt_id IN (${attemptIds.map(() => "?").join(",")})`, ...attemptIds)).results
-        : [];
+    dump.question_options = await rowsByIds(db, "question_options", "question_id", questionIds);
+    dump.exam_questions = await rowsByIds(db, "exam_questions", "exam_id", examIds);
+    dump.exam_answers = await rowsByIds(db, "exam_answers", "attempt_id", attemptIds);
 
     // BUGFIX: these tables also have no direct school_id column (same as
     // question_options/exam_questions/exam_answers above) and were missing
     // from the export entirely -- most notably submission_answers, which is
     // the actual student answer data for multi-question assignments.
-    dump.question_skills = questionIds.length
-        ? (await db.all(`SELECT * FROM question_skills WHERE question_id IN (${questionIds.map(() => "?").join(",")})`, ...questionIds)).results
-        : [];
-    dump.question_versions = questionIds.length
-        ? (await db.all(`SELECT * FROM question_versions WHERE question_id IN (${questionIds.map(() => "?").join(",")})`, ...questionIds)).results
-        : [];
+    dump.question_skills = await rowsByIds(db, "question_skills", "question_id", questionIds);
+    dump.question_versions = await rowsByIds(db, "question_versions", "question_id", questionIds);
 
     const assignmentIds = dump.assignments.map(a => a.id);
-    dump.assignment_questions = assignmentIds.length
-        ? (await db.all(`SELECT * FROM assignment_questions WHERE assignment_id IN (${assignmentIds.map(() => "?").join(",")})`, ...assignmentIds)).results
-        : [];
-    dump.assignment_attachments = assignmentIds.length
-        ? (await db.all(`SELECT * FROM assignment_attachments WHERE assignment_id IN (${assignmentIds.map(() => "?").join(",")})`, ...assignmentIds)).results
-        : [];
+    dump.assignment_questions = await rowsByIds(db, "assignment_questions", "assignment_id", assignmentIds);
+    dump.assignment_attachments = await rowsByIds(db, "assignment_attachments", "assignment_id", assignmentIds);
 
     const submissionIds = dump.submissions.map(s => s.id);
-    dump.submission_answers = submissionIds.length
-        ? (await db.all(`SELECT * FROM submission_answers WHERE submission_id IN (${submissionIds.map(() => "?").join(",")})`, ...submissionIds)).results
-        : [];
-    dump.submission_files = submissionIds.length
-        ? (await db.all(`SELECT * FROM submission_files WHERE submission_id IN (${submissionIds.map(() => "?").join(",")})`, ...submissionIds)).results
-        : [];
+    dump.submission_answers = await rowsByIds(db, "submission_answers", "submission_id", submissionIds);
+    dump.submission_files = await rowsByIds(db, "submission_files", "submission_id", submissionIds);
 
     const conversationIds = dump.conversations.map(c => c.id);
-    dump.messages = conversationIds.length
-        ? (await db.all(`SELECT * FROM messages WHERE conversation_id IN (${conversationIds.map(() => "?").join(",")})`, ...conversationIds)).results
-        : [];
+    dump.messages = await rowsByIds(db, "messages", "conversation_id", conversationIds);
 
     await writeAudit(env, {
         schoolId: user.school_id, actorUserId: user.id, action: "backup.export",

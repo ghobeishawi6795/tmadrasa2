@@ -20,7 +20,7 @@ const AUTO_GRADED_TYPES = ["match", "drag_drop"];
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "assignments.view");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const db = q(env);
     const rows = await db.all(
@@ -41,7 +41,7 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "assignments.create");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["class_id", "subject_id", "title", "due_at"]);
@@ -69,8 +69,8 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     let chapterId = null;
     if (body.chapter_id) {
         const chapter = await db.first(
-            `SELECT id FROM chapters WHERE id = ? AND teacher_id = ? AND subject_id = ?`,
-            body.chapter_id, teacher.id, body.subject_id
+            `SELECT id FROM chapters WHERE id = ? AND teacher_id = ? AND subject_id = ? AND school_id = ?`,
+            body.chapter_id, teacher.id, body.subject_id, user.school_id
         );
         if (!chapter) throw errors.validation("فصل انتخاب‌شده معتبر نیست");
         chapterId = chapter.id;
@@ -101,7 +101,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
 export const onRequestDelete = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "assignments.delete");
-    const teacher = await getTeacherRecord(env, user.id);
+    const teacher = await getTeacherRecord(env, user.id, user.school_id);
 
     const body = await readJson(request);
     requireFields(body, ["id"]);

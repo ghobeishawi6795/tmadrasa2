@@ -1,7 +1,7 @@
 -- Lets a teacher create/rename subjects (bank tabs) from the question bank
 -- itself, without needing admin -- subjects.create/update already exist as
 -- permission rows (seeds.sql), just never granted to the teacher role.
-INSERT INTO role_permissions (role_id, permission_id)
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
 SELECT (SELECT id FROM roles WHERE key = 'teacher'), id FROM permissions
 WHERE key IN ('subjects.create', 'subjects.update');
 

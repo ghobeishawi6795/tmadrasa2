@@ -11,7 +11,7 @@ import { withErrorHandling } from "../_shared/validate.js";
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
     await requirePermission(env, user, "practice.use");
-    const student = await getStudentRecord(env, user.id);
+    const student = await getStudentRecord(env, user.id, user.school_id);
 
     const subjectIds = await getEligibleSubjectIds(env, student.id, user.school_id);
     const chapters = await getWeakestChapters(env, student.id, user.school_id, subjectIds);
