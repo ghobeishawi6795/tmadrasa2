@@ -1,6 +1,11 @@
-import {q} from "../_shared/db.js";import {authenticate,requirePermission} from "../_shared/auth.js";import {ok,errors} from "../_shared/response.js";import {readJson,requireFields,withErrorHandling} from "../_shared/validate.js";
+import {q} from "../_shared/db.js";import {authenticate,requirePermission} from "../_shared/auth.js";import {ok,errors} from "../_shared/response.js";import {readJson,requireFields,withErrorHandling} from "../_shared/validate.js";import {notifyUsers} from "../_shared/notify.js";
 export const onRequestGet=withErrorHandling(async({request,env})=>{const {user}=await authenticate(request,env);await requirePermission(env,user,'meetings.view');const db=q(env);const r=await db.all(`SELECT m.*,tu.full_name teacher_name,pu.full_name parent_name,su.full_name student_name FROM parent_meetings m JOIN teachers t ON t.id=m.teacher_id JOIN users tu ON tu.id=t.user_id JOIN parents p ON p.id=m.parent_id JOIN users pu ON pu.id=p.user_id JOIN students s ON s.id=m.student_id JOIN users su ON su.id=s.user_id WHERE m.school_id=? ORDER BY m.scheduled_at DESC LIMIT 300`,user.school_id);return ok(r.results);});
 export const onRequestPatch=withErrorHandling(async({request,env})=>{const {user}=await authenticate(request,env);await requirePermission(env,user,'meetings.manage');const b=await readJson(request);requireFields(b,['id','status']);if(!['requested','confirmed','completed','cancelled'].includes(b.status))throw errors.validation('status نامعتبر است');const db=q(env);
+const meeting=await db.first(`SELECT m.scheduled_at,tu.id teacher_user_id,pu.id parent_user_id FROM parent_meetings m JOIN teachers t ON t.id=m.teacher_id JOIN users tu ON tu.id=t.user_id JOIN parents p ON p.id=m.parent_id JOIN users pu ON pu.id=p.user_id WHERE m.id=? AND m.school_id=?`,b.id,user.school_id);
+if(!meeting)throw errors.notFound('جلسه پیدا نشد');
 // See comment in teacher/meetings.js -- COALESCE preserves notes when the
 // caller (e.g. the plain status dropdown in admin/operations.html) doesn't send it.
-await db.run(`UPDATE parent_meetings SET status=?,notes=COALESCE(?,notes),updated_at=datetime('now') WHERE id=? AND school_id=?`,b.status,b.notes!==undefined?b.notes:null,b.id,user.school_id);return ok(null,'جلسه بروزرسانی شد');});
+await db.run(`UPDATE parent_meetings SET status=?,notes=COALESCE(?,notes),updated_at=datetime('now') WHERE id=? AND school_id=?`,b.status,b.notes!==undefined?b.notes:null,b.id,user.school_id);
+const statusLabel={requested:'درخواست شد',confirmed:'تأیید شد',completed:'انجام شد',cancelled:'لغو شد'}[b.status];
+await notifyUsers(env,user.school_id,[meeting.teacher_user_id,meeting.parent_user_id],'meeting',`وضعیت جلسه‌ی اولیا تغییر کرد: ${statusLabel}`,meeting.scheduled_at);
+return ok(null,'جلسه بروزرسانی شد');});

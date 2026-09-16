@@ -1,8 +1,13 @@
-import {q} from "../_shared/db.js";import {authenticate,requirePermission} from "../_shared/auth.js";import {getTeacherRecord} from "../_shared/ownership.js";import {ok,errors} from "../_shared/response.js";import {readJson,requireFields,withErrorHandling} from "../_shared/validate.js";
+import {q} from "../_shared/db.js";import {authenticate,requirePermission} from "../_shared/auth.js";import {getTeacherRecord} from "../_shared/ownership.js";import {ok,errors} from "../_shared/response.js";import {readJson,requireFields,withErrorHandling} from "../_shared/validate.js";import {notifyUsers} from "../_shared/notify.js";
 export const onRequestGet=withErrorHandling(async({request,env})=>{const {user}=await authenticate(request,env);await requirePermission(env,user,'meetings.view');const t=await getTeacherRecord(env,user.id),db=q(env);const r=await db.all(`SELECT m.*,pu.full_name parent_name,su.full_name student_name FROM parent_meetings m JOIN parents p ON p.id=m.parent_id JOIN users pu ON pu.id=p.user_id JOIN students s ON s.id=m.student_id JOIN users su ON su.id=s.user_id WHERE m.teacher_id=? AND m.school_id=? ORDER BY m.scheduled_at DESC`,t.id,user.school_id);return ok(r.results);});
 export const onRequestPatch=withErrorHandling(async({request,env})=>{const {user}=await authenticate(request,env);await requirePermission(env,user,'meetings.manage');const t=await getTeacherRecord(env,user.id),b=await readJson(request);requireFields(b,['id','status']);const db=q(env);if(!['requested','confirmed','completed','cancelled'].includes(b.status))throw errors.validation('status نامعتبر است');
+const meeting=await db.first(`SELECT m.scheduled_at,pu.id parent_user_id FROM parent_meetings m JOIN parents p ON p.id=m.parent_id JOIN users pu ON pu.id=p.user_id WHERE m.id=? AND m.teacher_id=? AND m.school_id=?`,b.id,t.id,user.school_id);
+if(!meeting)throw errors.notFound('جلسه پیدا نشد');
 // notes is optional here: a plain status change (the common case, e.g. the
 // dropdown in teacher/meetings.html) must not silently wipe existing notes,
 // so COALESCE keeps the old value when notes wasn't sent at all -- only an
 // explicit notes value (including "") overwrites it.
-await db.run(`UPDATE parent_meetings SET status=?,notes=COALESCE(?,notes),updated_at=datetime('now') WHERE id=? AND teacher_id=? AND school_id=?`,b.status,b.notes!==undefined?b.notes:null,b.id,t.id,user.school_id);return ok(null,'جلسه بروزرسانی شد');});
+await db.run(`UPDATE parent_meetings SET status=?,notes=COALESCE(?,notes),updated_at=datetime('now') WHERE id=? AND teacher_id=? AND school_id=?`,b.status,b.notes!==undefined?b.notes:null,b.id,t.id,user.school_id);
+const statusLabel={requested:'درخواست شد',confirmed:'تأیید شد',completed:'انجام شد',cancelled:'لغو شد'}[b.status];
+await notifyUsers(env,user.school_id,[meeting.parent_user_id],'meeting',`وضعیت جلسه‌ی اولیا تغییر کرد: ${statusLabel}`,meeting.scheduled_at);
+return ok(null,'جلسه بروزرسانی شد');});

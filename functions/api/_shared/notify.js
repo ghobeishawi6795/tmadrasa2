@@ -12,7 +12,22 @@ export async function notifyUsers(env, schoolId, userIds, type, title, body) {
     })));
 }
 
-// Users to notify when something happens to a class (its students' parents + the students themselves)
+// Users to notify about something that happened to ONE student (the
+// student's own account + all linked parents) -- used by discipline,
+// finance, and similar single-student events (as opposed to
+// getClassUserIds, which is for something affecting a whole class).
+export async function getStudentUserIds(env, studentId) {
+    const db = q(env);
+    const student = await db.first(`SELECT user_id FROM students WHERE id = ?`, studentId);
+    const parents = await db.all(
+        `SELECT p.user_id FROM parent_students ps JOIN parents p ON p.id = ps.parent_id WHERE ps.student_id = ?`,
+        studentId
+    );
+    return {
+        studentUserId: student?.user_id ?? null,
+        parentUserIds: parents.results.map(r => r.user_id),
+    };
+}
 export async function getClassUserIds(env, classId) {
     const db = q(env);
     const students = await db.all(
