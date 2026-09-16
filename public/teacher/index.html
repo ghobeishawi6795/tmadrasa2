@@ -486,9 +486,16 @@ async function openSubmissionsList(assignmentId, title, submissionType) {
 function submissionStatusLabel(s) { return { submitted: "ارسال‌شده", late: "با تأخیر", graded: "تصحیح‌شده" }[s] || s; }
 
 function renderAnswerPreview(s) {
-    // answer_data is a data: URI (image or audio) captured client-side -- see student panel
-    if (s.answer_data.startsWith("data:image")) return `<img src="${s.answer_data}" style="max-width:200px;border-radius:8px;margin-bottom:8px">`;
-    if (s.answer_data.startsWith("data:audio")) return `<audio controls src="${s.answer_data}" style="width:100%;margin-bottom:8px"></audio>`;
+    // answer_data is meant to be a data: URI (image or audio) captured
+    // client-side -- see student panel. It's NOT format-validated on the
+    // server beyond "is non-empty" though (see student/submissions.js),
+    // so a crafted value that merely starts with "data:image"/"data:audio"
+    // but contains an embedded '"' could break out of the src="..."
+    // attribute and inject arbitrary markup/attributes here -- a stored XSS
+    // against whichever teacher opens this submission to grade it.
+    // escapeHtml() closes that regardless of what the server ever allows in.
+    if (s.answer_data.startsWith("data:image")) return `<img src="${escapeHtml(s.answer_data)}" style="max-width:200px;border-radius:8px;margin-bottom:8px">`;
+    if (s.answer_data.startsWith("data:audio")) return `<audio controls src="${escapeHtml(s.answer_data)}" style="width:100%;margin-bottom:8px"></audio>`;
     return "";
 }
 

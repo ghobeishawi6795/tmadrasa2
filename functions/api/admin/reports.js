@@ -56,7 +56,7 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
                 (SELECT COUNT(DISTINCT student_id) FROM submissions sub WHERE sub.assignment_id = a.id) as submitted_count
            FROM assignments a
            JOIN classes c ON c.id = a.class_id
-          WHERE a.school_id = ? AND a.deleted_at IS NULL AND a.due_at < datetime('now')
+          WHERE a.school_id = ? AND a.deleted_at IS NULL AND datetime(a.due_at) < datetime('now')
           ORDER BY a.due_at DESC
           LIMIT 20`,
         schoolId

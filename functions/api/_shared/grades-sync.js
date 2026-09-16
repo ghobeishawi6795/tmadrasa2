@@ -24,16 +24,21 @@ import { q } from "./db.js";
 // behavior -- better to file it under the last real period than not sync
 // the grade at all.
 export async function getCurrentGradePeriod(db, schoolId) {
+    // start_at/end_at are stored as whatever ISO string the client sent
+    // ("...T...Z"), while datetime('now') returns SQLite's own
+    // space-separated format -- see the comment in parent/dashboard.js for
+    // why raw TEXT comparison of the two formats is wrong on the same
+    // calendar date. Wrap the columns in datetime(...) to normalize first.
     const current = await db.first(
         `SELECT * FROM grade_periods
-          WHERE school_id = ? AND start_at <= datetime('now')
-            AND (end_at IS NULL OR end_at >= datetime('now'))
+          WHERE school_id = ? AND datetime(start_at) <= datetime('now')
+            AND (end_at IS NULL OR datetime(end_at) >= datetime('now'))
           ORDER BY start_at DESC LIMIT 1`,
         schoolId
     );
     if (current) return current;
     return await db.first(
-        `SELECT * FROM grade_periods WHERE school_id = ? AND start_at <= datetime('now') ORDER BY start_at DESC LIMIT 1`,
+        `SELECT * FROM grade_periods WHERE school_id = ? AND datetime(start_at) <= datetime('now') ORDER BY start_at DESC LIMIT 1`,
         schoolId
     );
 }

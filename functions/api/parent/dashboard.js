@@ -19,11 +19,19 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
 
     const placeholders = studentIds.map(() => "?").join(",");
 
+    // due_at/start_at are stored exactly as the client sends them (an ISO
+    // string like "2026-07-05T08:00:00.000Z"), while SQLite's datetime('now')
+    // returns "2026-07-05 08:00:00" (space, no ms/Z). Comparing those two
+    // formats as raw TEXT is lexicographic: for two timestamps on the SAME
+    // calendar date, 'T' (0x54) sorts after ' ' (0x20) regardless of the
+    // actual time that follows, so e.g. an assignment due at 08:00 today
+    // would wrongly compare as "later than" 20:00 today. Wrapping both
+    // sides in datetime(...) normalizes to the same format before compare.
     const activeAssignments = await db.first(
         `SELECT COUNT(DISTINCT a.id) as c
            FROM assignments a
            JOIN class_students cs ON cs.class_id = a.class_id
-          WHERE cs.student_id IN (${placeholders}) AND a.due_at > datetime('now') AND a.deleted_at IS NULL`,
+          WHERE cs.student_id IN (${placeholders}) AND datetime(a.due_at) > datetime('now') AND a.deleted_at IS NULL`,
         ...studentIds
     );
 
@@ -32,7 +40,7 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
            FROM exams e
            JOIN class_students cs ON cs.class_id = e.class_id
           WHERE cs.student_id IN (${placeholders}) AND e.status = 'published'
-            AND e.start_at > datetime('now') AND e.deleted_at IS NULL`,
+            AND datetime(e.start_at) > datetime('now') AND e.deleted_at IS NULL`,
         ...studentIds
     );
 

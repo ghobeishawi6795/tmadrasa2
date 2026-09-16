@@ -13,6 +13,17 @@ import { gradeInteractiveAnswer } from "../_shared/interactive.js";
 import { syncGradeFromSource } from "../_shared/grades-sync.js";
 
 const MAX_ANSWER_DATA_CHARS = 500_000; // ~500KB of base64 (~365KB raw binary)
+// The frontend only ever produces this via canvas.toDataURL(...) or
+// FileReader.readAsDataURL(...), so a well-formed value always matches this
+// shape. Enforced server-side (not just "non-empty") because this string is
+// later re-inserted as an <img>/<audio> src="..." attribute when a teacher
+// grades the submission -- without this check, a raw API call could submit
+// a value that merely starts with "data:image" but embeds a stray `"` to
+// break out of that attribute and inject markup into the grading teacher's
+// page (stored XSS). The frontend also escapes this on render as a second
+// layer, but rejecting a malformed value here means nothing bad ever
+// reaches the database in the first place.
+const DATA_URI_RE = /^data:(image|audio)\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/]+=*$/;
 const AUTO_GRADED_TYPES = ["match", "drag_drop"];
 
 export const onRequestPost = withErrorHandling(async ({ request, env }) => {
@@ -35,6 +46,9 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     }
     if (body.answer_data && body.answer_data.length > MAX_ANSWER_DATA_CHARS) {
         throw errors.validation(`حجم فایل ارسالی بیش از حد مجاز است (حداکثر ${Math.floor(MAX_ANSWER_DATA_CHARS / 1000)}KB)`);
+    }
+    if (["photo", "audio", "draw"].includes(assignment.submission_type) && body.answer_data && !DATA_URI_RE.test(body.answer_data)) {
+        throw errors.validation("فرمت فایل ارسالی نامعتبر است");
     }
     if (isAutoGraded) requireFields(body, ["answer_json"]);
 
