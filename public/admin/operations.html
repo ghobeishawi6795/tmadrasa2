@@ -3,7 +3,6 @@ initShell('admin');
 const $=id=>document.getElementById(id), esc=escapeHtml;
 async function load(){
  const [years,students,exams,req,meet,finance,lib,feeItems]=await Promise.all([api.get('/api/admin/academic-years'),api.get('/api/admin/students'),api.get('/api/admin/exams'),api.get('/api/admin/parent-requests'),api.get('/api/admin/meetings'),api.get('/api/admin/finance'),api.get('/api/admin/library'),api.get('/api/admin/finance?fee_items=1')]);
- const classes=await api.get('/api/admin/classes');
  $('app').innerHTML=`
  <div class="card"><h3>📅 سال‌های تحصیلی</h3><form id="yearForm"><div class="row"><input class="form-input" name="name" placeholder="۱۴۰۵-۱۴۰۶" required><input class="form-input" name="start_date" type="date" required></div><div class="row" style="margin-top:8px"><input class="form-input" name="end_date" type="date" required><label><input type="checkbox" name="current"> سال جاری</label></div><button class="primary-btn" style="margin-top:10px">افزودن</button></form><div class="table-wrap" style="margin-top:12px">${years.map(y=>`<div style="padding:8px;border-bottom:1px solid var(--line)">${esc(y.name)} <span class="pill">${y.is_current?'جاری':y.status}</span><span class="mini"> — ${y.class_count} کلاس، ${y.student_count} دانش‌آموز</span></div>`).join('')}</div></div>
  <div class="card"><h3>🎓 ارتقای دانش‌آموزان</h3><p class="mini">کلاس‌ها اکنون به سال تحصیلی متصل‌اند و سابقه عضویت در student_enrollments نگه‌داری می‌شود.</p><div class="actions"><button class="secondary-btn" onclick="promoteCurrent()">ارتقای خودکار به سال انتخابی</button></div><div id="promoteMsg" class="mini" style="margin-top:8px"></div></div>
@@ -31,7 +30,15 @@ let promotePreviewCache=null;
 async function promoteCurrent(){
  const years=await api.get('/api/admin/academic-years');
  if(years.length<2){$('promoteMsg').textContent='ابتدا سال جدید را بسازید.';return}
- const target=years.find(x=>!x.is_current);
+ const current=years.find(x=>x.is_current);
+ if(!current){$('promoteMsg').textContent='سال جاری پیدا نشد.';return}
+ // years is sorted start_date DESC; pick the NEAREST future year after the
+ // current one (smallest start_date that is still > current's), not just
+ // "any" non-current year -- with 3+ years defined ahead, picking the
+ // first non-current hit in DESC order would jump straight to the
+ // furthest year and skip the intended next one.
+ const candidates=years.filter(x=>!x.is_current && x.start_date>current.start_date).sort((a,b)=>a.start_date<b.start_date?-1:1);
+ const target=candidates[0];
  if(!target){$('promoteMsg').textContent='سال مقصدی پیدا نشد.';return}
  const p=await api.post('/api/admin/academic-years',{action:'promote_preview',to_year_id:target.id});
  promotePreviewCache={target,preview:p};
