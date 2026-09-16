@@ -1559,8 +1559,8 @@ function checkPreviewAnswer() {
         if (q.grading_mode === "manual") {
             isCorrect = null;
         } else {
-            const accepted = (q.correct_text || "").split(",").map(s => s.trim()).filter(Boolean);
-            isCorrect = accepted.includes(val) ? 1 : 0;
+            const accepted = (q.correct_text || "").split(",").map(s => previewNormalizeFillBlank(s.trim())).filter(Boolean);
+            isCorrect = accepted.includes(previewNormalizeFillBlank(val)) ? 1 : 0;
         }
         if (q.correct_text) refLine = `<div style="margin-top:6px">پاسخ نمونه: ${escapeHtml(q.correct_text.split(",")[0].trim())}</div>`;
     } else if (q.type === "custom_html") {
@@ -1590,6 +1590,21 @@ function checkPreviewAnswer() {
 // -- shared: interactive (match/drag_drop) sanitize + grade, ported from
 // functions/api/_shared/interactive.js so the SAME logic the real
 // server uses to grade a student is what scores this preview.
+// Ported from functions/api/_shared/search-normalize.js so fill_blank
+// preview-checking uses the EXACT same comparison the real exam grader
+// does (Arabic ك/ي/ة -> Persian ک/ی/ه, drop نیم‌فاصله, Persian/Arabic
+// digits -> Latin, lowercase) -- without this, the preview could show
+// "نادرست" for an answer a real student's attempt would be graded
+// correct for, or vice versa.
+function previewNormalizeFillBlank(s) {
+    const ZWNJ = "\u200C";
+    return String(s || "")
+        .replace(/ك/g, "ک").replace(/ي/g, "ی").replace(/ة/g, "ه")
+        .replace(new RegExp(ZWNJ, "g"), "")
+        .replace(/[۰-۹]/g, d => "0123456789"["۰۱۲۳۴۵۶۷۸۹".indexOf(d)])
+        .replace(/[٠-٩]/g, d => "0123456789"["٠١٢٣٤٥٦٧٨٩".indexOf(d)])
+        .toLowerCase();
+}
 function previewShuffle(arr) {
     const a = [...arr];
     for (let i = a.length - 1; i > 0; i--) {
@@ -1870,8 +1885,8 @@ function checkExamPreviewAnswer(i) {
         const val = (document.getElementById(`epText_${i}`).value || "").trim();
         if (q.grading_mode === "manual") { isCorrect = null; }
         else {
-            const accepted = (q.correct_text || "").split(",").map(s => s.trim()).filter(Boolean);
-            isCorrect = accepted.includes(val) ? 1 : 0;
+            const accepted = (q.correct_text || "").split(",").map(s => previewNormalizeFillBlank(s.trim())).filter(Boolean);
+            isCorrect = accepted.includes(previewNormalizeFillBlank(val)) ? 1 : 0;
         }
     } else if (q.type === "custom_html") {
         refLine = `<div style="margin-top:4px">نتیجه‌ی گزارش‌شده از کد: ${escapeHtml(String(q.__htmlResult ?? ""))}</div>`;
@@ -2284,7 +2299,12 @@ async function loadAttendanceSessions(classId) {
 }
 
 async function createAttendanceSession(classId) {
-    const today = new Date().toISOString().slice(0, 10);
+    // NOT new Date().toISOString().slice(0,10) -- that's the UTC calendar
+    // date, which for Iran (UTC+3:30) is still "yesterday" from local
+    // midnight until 3:30am local time, so a teacher pressing this button
+    // in that window would create a session dated the wrong day.
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const result = await withToast(() => api.post("/api/teacher/attendance", { action: "create_session", class_id: classId, session_date: today }), "جلسه ساخته شد");
     loadAttendanceSessions(classId);
     if (result?.session_id) openAttendanceSession(result.session_id);

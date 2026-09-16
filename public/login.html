@@ -158,15 +158,15 @@ button{
 
         <button type="submit" class="submit-btn" id="submitBtn">ورود</button>
 
+        <div id="twoFactorBox" style="display:none;margin-top:18px;padding:14px;background:var(--primary-soft);border-radius:12px">
+          <label for="twoFactorCode" style="margin-top:0">کد ۶ رقمی ورود دومرحله‌ای</label>
+          <input id="twoFactorCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}">
+        </div>
+
         <div class="error-box" id="errorBox"></div>
     </form>
 
     <div class="hint">شناسه مدرسه را از مدیر سیستم خود دریافت کنید.</div>
-
-    <div id="twoFactorBox" style="display:none;margin-top:18px;padding:14px;background:var(--primary-soft);border-radius:12px">
-      <label for="twoFactorCode" style="margin-top:0">کد ۶ رقمی ورود دومرحله‌ای</label>
-      <input id="twoFactorCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}">
-    </div>
 </div>
 
 <script src="assets/js/api.js"></script>
