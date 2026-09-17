@@ -111,18 +111,41 @@ async function loadSessions(el) {
     const box = el.querySelector("#apSessions");
     try {
         const sessions = await api.get("/api/auth/sessions");
-        box.innerHTML = sessions.map(s => `
-            <div class="field" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">
-                <div>
-                    <div>${s.current ? "🟢 این دستگاه" : "دستگاه دیگر"}${s.revoked_at ? " (باطل‌شده)" : ""}</div>
-                    <div class="mini">${escapeHtml(s.ip_address || "—")} — ${escapeHtml(s.created_at)}</div>
-                </div>
-                ${!s.current && !s.revoked_at ? `<button class="secondary-btn" onclick="revokeSession('${el.id}',${s.id})">خروج از این دستگاه</button>` : ""}
-            </div>
-        `).join("") + `<button class="secondary-btn" onclick="revokeAllSessions('${el.id}')" style="margin-top:6px">خروج از همه‌ی دستگاه‌های دیگر</button>`;
+        renderSessions(box, el.id, sessions, false);
     } catch (err) {
         box.innerHTML = `<p class="mini">بارگذاری نشست‌ها ناموفق بود</p>`;
     }
+}
+
+// Active/current sessions always show; old revoked ones pile up fast (one
+// per login) and used to make this card the longest thing on the whole
+// page, so by default we only show the 3 most recent revoked ones plus a
+// "نمایش تاریخچه" toggle for the rest.
+function renderSessions(box, containerId, sessions, showAll) {
+    const live = sessions.filter(s => s.current || !s.revoked_at);
+    const revoked = sessions.filter(s => !s.current && s.revoked_at);
+    const shown = showAll ? revoked : revoked.slice(0, 3);
+    const hiddenCount = revoked.length - shown.length;
+    const row = s => `
+        <div class="field" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <div>
+                <div>${s.current ? "🟢 این دستگاه" : "دستگاه دیگر"}${s.revoked_at ? " (باطل‌شده)" : ""}</div>
+                <div class="mini">${escapeHtml(s.ip_address || "—")} — ${escapeHtml(s.created_at)}</div>
+            </div>
+            ${!s.current && !s.revoked_at ? `<button class="secondary-btn" onclick="revokeSession('${containerId}',${s.id})">خروج از این دستگاه</button>` : ""}
+        </div>`;
+    box.innerHTML = live.map(row).join("")
+        + shown.map(row).join("")
+        + (hiddenCount > 0 ? `<button class="secondary-btn" style="margin-top:6px" onclick="expandSessionHistory('${containerId}')">نمایش ${hiddenCount} نشست قدیمی‌تر</button>` : "")
+        + `<button class="secondary-btn" onclick="revokeAllSessions('${containerId}')" style="margin-top:6px">خروج از همه‌ی دستگاه‌های دیگر</button>`;
+    box.dataset.sessions = JSON.stringify(sessions);
+}
+
+async function expandSessionHistory(containerId) {
+    const el = document.getElementById(containerId);
+    const box = el.querySelector("#apSessions");
+    const sessions = JSON.parse(box.dataset.sessions || "[]");
+    renderSessions(box, containerId, sessions, true);
 }
 
 async function revokeSession(containerId, id) {
