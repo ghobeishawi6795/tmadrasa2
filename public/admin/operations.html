@@ -2,7 +2,14 @@
 initShell('admin');
 const $=id=>document.getElementById(id), esc=escapeHtml;
 async function load(){
- const [years,students,exams,req,meet,finance,lib,feeItems,periods]=await Promise.all([api.get('/api/admin/academic-years'),api.get('/api/admin/students'),api.get('/api/admin/exams'),api.get('/api/admin/parent-requests'),api.get('/api/admin/meetings'),api.get('/api/admin/finance'),api.get('/api/admin/library'),api.get('/api/admin/finance?fee_items=1'),api.get('/api/admin/grade-periods')]);
+ const calls=[['years','/api/admin/academic-years'],['students','/api/admin/students'],['exams','/api/admin/exams'],['req','/api/admin/parent-requests'],['meet','/api/admin/meetings'],['finance','/api/admin/finance'],['lib','/api/admin/library'],['feeItems','/api/admin/finance?fee_items=1'],['periods','/api/admin/grade-periods']];
+ const settled=await Promise.allSettled(calls.map(c=>api.get(c[1])));
+ const failed=settled.map((s,i)=>({name:calls[i][0],url:calls[i][1],s})).filter(x=>x.s.status==='rejected');
+ if(failed.length){
+   $('app').innerHTML=`<div class="card full"><h3>خطا در بارگذاری</h3>`+failed.map(f=>`<p class="mini">❌ ${f.name} (${f.url}): ${esc(f.s.reason&&f.s.reason.message||String(f.s.reason))}</p>`).join('')+`</div>`;
+   return;
+ }
+ const [years,students,exams,req,meet,finance,lib,feeItems,periods]=settled.map(s=>s.value);
  $('app').innerHTML=`
  <div class="card"><h3>📅 سال‌های تحصیلی</h3><form id="yearForm"><div class="row"><input class="form-input" name="name" placeholder="۱۴۰۵-۱۴۰۶" required><input class="form-input" name="start_date" type="date" required></div><div class="row" style="margin-top:8px"><input class="form-input" name="end_date" type="date" required><label><input type="checkbox" name="current"> سال جاری</label></div><button class="primary-btn" style="margin-top:10px">افزودن</button></form><div class="table-wrap" style="margin-top:12px">${years.map(y=>`<div style="padding:8px;border-bottom:1px solid var(--line)">${esc(y.name)} <span class="pill">${y.is_current?'جاری':y.status}</span><span class="mini"> — ${y.class_count} کلاس، ${y.student_count} دانش‌آموز</span></div>`).join('')}</div></div>
  <div class="card"><h3>🗓️ دوره‌های نمره‌دهی</h3><p class="mini">نوبت‌هایی مثل «نوبت اول/دوم» برای فیلتر کارنامه‌ی والد و دانش‌آموز؛ نمرات ثبت‌شده در بازه‌ی هر دوره خودکار به همان دوره برچسب می‌خورند.</p><form id="periodForm"><input class="form-input" name="name" placeholder="نوبت اول" required style="margin-top:8px"><div class="row" style="margin-top:8px"><input class="form-input" name="start_date" type="date" required><input class="form-input" name="end_date" type="date" required></div><button class="primary-btn" style="margin-top:8px">افزودن دوره</button></form><div class="table-wrap" style="margin-top:10px">${periods.map(p=>`<div style="padding:7px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px"><span>${esc(p.name)} <span class="mini">— ${p.start_at.slice(0,10)} تا ${p.end_at.slice(0,10)}</span></span><button class="secondary-btn" onclick="deletePeriod(${p.id})">حذف</button></div>`).join('')||'<p class="mini">دوره‌ای ثبت نشده</p>'}</div></div>
