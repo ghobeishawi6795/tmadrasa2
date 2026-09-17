@@ -31,10 +31,14 @@ async function loadOwnAttempt(db, attemptId, studentId) {
 // saved, writes nothing new, and a late submit is how an attempt that ran
 // out the clock actually gets out of "in_progress" limbo and graded, so
 // blocking it would strand attempts forever with no cron job to sweep them.
-function assertWithinAttemptDeadline(attempt, exam) {
+function computeAttemptDeadline(startedAt, exam) {
     const examDeadline = new Date(exam.end_at);
-    const attemptDeadline = new Date(new Date(attempt.started_at).getTime() + exam.duration_minutes * 60000);
-    const deadline = examDeadline < attemptDeadline ? examDeadline : attemptDeadline;
+    const attemptDeadline = new Date(new Date(startedAt).getTime() + exam.duration_minutes * 60000);
+    return examDeadline < attemptDeadline ? examDeadline : attemptDeadline;
+}
+
+function assertWithinAttemptDeadline(attempt, exam) {
+    const deadline = computeAttemptDeadline(attempt.started_at, exam);
     if (new Date() > deadline) {
         throw errors.forbidden("زمان مجاز این آزمون به پایان رسیده — دیگر نمی‌توانید پاسخ جدیدی ثبت کنید، فقط می‌توانید ارسال نهایی کنید");
     }
@@ -66,7 +70,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
             `SELECT * FROM exam_attempts WHERE exam_id = ? AND student_id = ?`, exam.id, student.id
         );
         const inProgress = existing.results.find(a => a.status === "in_progress");
-        if (inProgress) return ok({ attempt_id: inProgress.id }, "ادامه Attempt قبلی");
+        if (inProgress) return ok({ attempt_id: inProgress.id, deadline_at: computeAttemptDeadline(inProgress.started_at, exam).toISOString() }, "ادامه Attempt قبلی");
 
         if (existing.results.length >= exam.max_attempts) {
             throw errors.forbidden("تعداد دفعات مجاز به پایان رسیده است");
@@ -76,6 +80,11 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
             `SELECT COALESCE(SUM(score),0) as total FROM exam_questions WHERE exam_id = ?`, exam.id
         );
 
+        // captured right before the INSERT, at effectively the same instant
+        // exam_attempts.started_at gets set by its own DEFAULT (datetime('now'))
+        // -- used only to compute the deadline to hand back to the client
+        // (as an unambiguous ISO string with a 'Z'), not written to the row.
+        const startedAt = new Date();
         const result = await db.run(
             `INSERT INTO exam_attempts (school_id, exam_id, student_id, attempt_number, status, max_score)
              SELECT ?, ?, ?, COALESCE(MAX(attempt_number), 0) + 1, 'in_progress', ?
@@ -87,10 +96,10 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
         if (!result.meta.last_row_id) {
             const refreshed = await db.all(`SELECT * FROM exam_attempts WHERE exam_id = ? AND student_id = ?`, exam.id, student.id);
             const resumed = refreshed.results.find(a => a.status === "in_progress");
-            if (resumed) return ok({ attempt_id: resumed.id }, "ادامه Attempt قبلی");
+            if (resumed) return ok({ attempt_id: resumed.id, deadline_at: computeAttemptDeadline(resumed.started_at, exam).toISOString() }, "ادامه Attempt قبلی");
             throw errors.forbidden("تعداد دفعات مجاز به پایان رسیده است");
         }
-        return created({ attempt_id: result.meta.last_row_id }, "Attempt شروع شد");
+        return created({ attempt_id: result.meta.last_row_id, deadline_at: computeAttemptDeadline(startedAt, exam).toISOString() }, "Attempt شروع شد");
     }
 
     if (body.action === "answer") {

@@ -764,7 +764,7 @@ function attemptStatusLabel(s) {
 async function startExam(examId) {
     const start = await withToast(() => api.post("/api/student/exam-attempt", { action: "start", exam_id: examId }));
     const exam = await api.get(`/api/student/exams?id=${examId}`);
-    openExamRunner(exam, start.attempt_id);
+    openExamRunner(exam, start.attempt_id, start.deadline_at);
 }
 
 function questionInput(q) {
@@ -797,9 +797,15 @@ function questionInput(q) {
     return `<textarea class="form-input" name="q_${q.id}" rows="3" style="height:auto;padding:10px 12px"></textarea>`;
 }
 
-function openExamRunner(exam, attemptId) {
+let __examTimerInterval = null;
+
+function openExamRunner(exam, attemptId, deadlineAt) {
     openModal(exam.title, `
         <div class="page-subtitle" style="margin-bottom:14px">${escapeHtml(exam.description || "")} — مدت: ${exam.duration_minutes} دقیقه</div>
+        <div id="examTimerBox" style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border-radius:10px;padding:8px 14px;margin-bottom:14px;font-weight:700">
+            <span>زمان باقی‌مانده</span>
+            <span id="examTimerText">—</span>
+        </div>
         <form id="examRunnerForm">
             ${exam.questions.map((q, i) => `
                 <div class="form-group" style="border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:14px">
@@ -814,6 +820,8 @@ function openExamRunner(exam, attemptId) {
             </div>
         </form>
     `);
+
+    startExamTimer(deadlineAt, attemptId, exam.id);
 
     // custom_html questions need real DOM elements to attach to (srcdoc +
     // a scoped postMessage listener) -- can't be done as a static string.
@@ -838,6 +846,36 @@ function openExamRunner(exam, attemptId) {
     }
 }
 
+function startExamTimer(deadlineAt, attemptId, examId) {
+    if (__examTimerInterval) clearInterval(__examTimerInterval);
+    if (!deadlineAt) { document.getElementById("examTimerBox").style.display = "none"; return; }
+    const deadline = new Date(deadlineAt).getTime();
+
+    function tick() {
+        const box = document.getElementById("examTimerBox");
+        const text = document.getElementById("examTimerText");
+        if (!box || !text) { clearInterval(__examTimerInterval); return; } // modal closed
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) {
+            clearInterval(__examTimerInterval);
+            text.textContent = "۰۰:۰۰";
+            box.style.background = "#ffeded";
+            document.querySelectorAll("#examRunnerForm input, #examRunnerForm textarea, #examRunnerForm button")
+                .forEach(el => el.disabled = true);
+            toast("زمان آزمون به پایان رسید — پاسخ‌های ذخیره‌شده به‌طور خودکار ارسال شد", true);
+            autoSubmitExam(attemptId, examId);
+            return;
+        }
+        const totalSec = Math.floor(remainingMs / 1000);
+        const h = Math.floor(totalSec / 3600), m = Math.floor((totalSec % 3600) / 60), s = totalSec % 60;
+        const pad = n => String(n).padStart(2, "0");
+        text.textContent = h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+        box.style.background = remainingMs < 5 * 60 * 1000 ? "#ffeded" : "var(--surface2)";
+    }
+    tick();
+    __examTimerInterval = setInterval(tick, 1000);
+}
+
 async function saveAnswer(attemptId, questionId, type, btn) {
     const form = btn.closest("form");
     const fd = new FormData(form);
@@ -853,7 +891,23 @@ async function saveAnswer(attemptId, questionId, type, btn) {
 
 async function submitExam(attemptId, examId) {
     if (!confirm("بعد از ارسال نهایی دیگر نمی‌توانید پاسخ‌ها را تغییر دهید. مطمئنید؟")) return;
+    if (__examTimerInterval) clearInterval(__examTimerInterval);
     await withToast(() => api.post("/api/student/exam-attempt", { action: "submit", attempt_id: attemptId }), "آزمون ارسال شد");
+    closeModal();
+    viewResult(attemptId);
+    renderExams();
+}
+
+// Same as submitExam but skips the confirm() dialog -- called when the
+// countdown timer itself reaches zero, so there's no user gesture to
+// confirm against and no reason to block on one.
+async function autoSubmitExam(attemptId, examId) {
+    try {
+        await api.post("/api/student/exam-attempt", { action: "submit", attempt_id: attemptId });
+    } catch (e) {
+        toast(e.message, true);
+        return;
+    }
     closeModal();
     viewResult(attemptId);
     renderExams();
@@ -1081,11 +1135,11 @@ async function submitPracticeAnswer(questionId, type) {
     const body = { question_id: questionId };
     if (type === "multiple_choice") {
         const picked = card.querySelector(`input[name="pq_${questionId}"]:checked`);
-        if (!picked) { alert("یک گزینه رو انتخاب کن"); return; }
+        if (!picked) { toast("یک گزینه رو انتخاب کن", true); return; }
         body.selected_option_id = Number(picked.value);
     } else if (type === "true_false") {
         const picked = card.querySelector(`input[name="pq_${questionId}"]:checked`);
-        if (!picked) { alert("یکی رو انتخاب کن"); return; }
+        if (!picked) { toast("یکی رو انتخاب کن", true); return; }
         body.boolean_answer = picked.value === "true";
     } else if (type === "numeric") {
         body.numeric_answer = Number(card.querySelector(`[name="pq_${questionId}"]`).value);
@@ -1150,7 +1204,7 @@ let __quickPractice = null;
 
 function startQuickPractice() {
     const pool = cache.practiceQuestions || [];
-    if (!pool.length) { alert("سؤالی برای تمرین سریع در این بخش نیست"); return; }
+    if (!pool.length) { toast("سؤالی برای تمرین سریع در این بخش نیست", true); return; }
     const shuffled = [...pool].sort(() => Math.random() - 0.5);
     __quickPractice = { questions: shuffled.slice(0, Math.min(10, shuffled.length)), idx: 0, correct: 0, incorrect: 0, answered: 0 };
     window.addEventListener("message", quickPracticeMessageHandler);
@@ -1228,11 +1282,11 @@ async function submitQuickPracticeAnswer() {
 
     if (q.type === "multiple_choice") {
         const picked = document.querySelector('input[name="qpAnswer"]:checked');
-        if (!picked) { alert("یک گزینه رو انتخاب کن"); return; }
+        if (!picked) { toast("یک گزینه رو انتخاب کن", true); return; }
         body.selected_option_id = Number(picked.value);
     } else if (q.type === "true_false") {
         const picked = document.querySelector('input[name="qpAnswer"]:checked');
-        if (!picked) { alert("یکی رو انتخاب کن"); return; }
+        if (!picked) { toast("یکی رو انتخاب کن", true); return; }
         body.boolean_answer = picked.value === "true";
     } else if (q.type === "numeric") {
         body.numeric_answer = Number(document.getElementById("qpAnswer").value);
@@ -1323,14 +1377,27 @@ async function renderAttendance() {
 ========================================================= */
 
 async function renderGrades() {
-    const report = await api.get("/api/student/report-card");
+    const [report, periods] = await Promise.all([
+        api.get(`/api/student/report-card${window.__selectedPeriodId ? `?grade_period_id=${window.__selectedPeriodId}` : ""}`),
+        api.get("/api/admin/grade-periods").catch(() => []),
+    ]);
 
     window.__lastReportCard = report; // used by printReportCard()
 
+    const periodOptions = periods.map(p =>
+        `<option value="${p.id}" ${String(p.id) === String(report.period?.id) ? "selected" : ""}>${escapeHtml(p.name)}</option>`
+    ).join("");
+
     document.getElementById("content").innerHTML = `
         <div class="page-head">
-            <div><div class="page-title">کارنامه</div><div class="page-subtitle">${report.period ? report.period.name || "دوره‌ی جاری" : "بدون دوره‌ی نمره‌دهی ثبت‌شده"}</div></div>
-            <button class="secondary-btn" onclick="printReportCard()">🖨️ چاپ / خروجی PDF</button>
+            <div><div class="page-title">کارنامه</div><div class="page-subtitle">${report.period ? escapeHtml(report.period.name) : "بدون دوره‌ی نمره‌دهی ثبت‌شده"}</div></div>
+            <div style="display:flex;gap:8px;align-items:center">
+                ${periods.length ? `<select class="form-input" id="periodSelect" style="width:auto" onchange="window.__selectedPeriodId=this.value;renderGrades()">
+                    <option value="all">همه‌ی نمرات</option>
+                    ${periodOptions}
+                </select>` : ""}
+                <button class="secondary-btn" onclick="printReportCard()">🖨️ چاپ / خروجی PDF</button>
+            </div>
         </div>
         <div class="stats" style="grid-template-columns:repeat(1,1fr);max-width:260px">
             <div class="stat-card"><div class="stat-value">${report.overall_average ?? "—"}</div><div class="stat-label">میانگین کل</div></div>
@@ -1345,6 +1412,9 @@ async function renderGrades() {
             </div>
         `).join("") || `<div class="card"><div class="page-subtitle">نمره‌ای ثبت نشده</div></div>`}
     `;
+    if (document.getElementById("periodSelect") && window.__selectedPeriodId) {
+        document.getElementById("periodSelect").value = window.__selectedPeriodId;
+    }
 }
 
 // Print-to-PDF via the browser's own print dialog -- no JS PDF library needed,

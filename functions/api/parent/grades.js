@@ -25,7 +25,10 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     // report card and its printed PDF always showed "no period" even when
     // one existed. Mirror the student endpoint's logic here.
     let period = null;
-    if (periodId) {
+    if (periodId === "all") {
+        // explicit "ignore period filtering" -- see student/report-card.js
+        periodId = null;
+    } else if (periodId) {
         period = await db.first(`SELECT * FROM grade_periods WHERE id = ? AND school_id = ?`, periodId, user.school_id);
     } else {
         // BUGFIX: was a duplicated, flawed `ORDER BY start_at DESC LIMIT 1`

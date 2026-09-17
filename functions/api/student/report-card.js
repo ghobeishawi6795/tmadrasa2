@@ -17,7 +17,12 @@ export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     let periodId = url.searchParams.get("grade_period_id");
 
     let period = null;
-    if (periodId) {
+    if (periodId === "all") {
+        // explicit request to ignore period filtering entirely (see
+        // admin/grade-periods.js) -- distinct from "no param given", which
+        // means "use whatever period is current right now".
+        periodId = null;
+    } else if (periodId) {
         period = await db.first(`SELECT * FROM grade_periods WHERE id = ? AND school_id = ?`, periodId, user.school_id);
     } else {
         // BUGFIX: was a duplicated, flawed `ORDER BY start_at DESC LIMIT 1`

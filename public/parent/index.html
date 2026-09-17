@@ -197,18 +197,29 @@ async function renderChildren() {
 
 async function renderGrades() {
     const children = await loadChildren();
-    const [report, weakChapters] = await Promise.all([
-        api.get(`/api/parent/grades?student_id=${selectedChild}`),
+    const [report, weakChapters, periods] = await Promise.all([
+        api.get(`/api/parent/grades?student_id=${selectedChild}${window.__selectedPeriodId ? `&grade_period_id=${window.__selectedPeriodId}` : ""}`),
         api.get(`/api/parent/practice-weak-chapters?student_id=${selectedChild}`),
+        api.get("/api/admin/grade-periods").catch(() => []),
     ]);
 
     window.__lastReportCard = report; // used by printReportCard()
     window.__lastReportChildName = (children.find(c => c.student_id === selectedChild) || {}).full_name || "";
 
+    const periodOptions = periods.map(p =>
+        `<option value="${p.id}" ${String(p.id) === String(report.period?.id) ? "selected" : ""}>${escapeHtml(p.name)}</option>`
+    ).join("");
+
     document.getElementById("content").innerHTML = `
         <div class="page-head">
-            <div><div class="page-title">وضعیت تحصیلی</div><div class="page-subtitle">${escapeHtml(report.period ? report.period.name || "دوره‌ی جاری" : "بدون دوره‌ی نمره‌دهی ثبت‌شده")}</div></div>
-            <button class="secondary-btn" onclick="printReportCard()">🖨️ چاپ / خروجی PDF</button>
+            <div><div class="page-title">وضعیت تحصیلی</div><div class="page-subtitle">${report.period ? escapeHtml(report.period.name) : "بدون دوره‌ی نمره‌دهی ثبت‌شده"}</div></div>
+            <div style="display:flex;gap:8px;align-items:center">
+                ${periods.length ? `<select class="form-input" id="periodSelect" style="width:auto" onchange="window.__selectedPeriodId=this.value;renderGrades()">
+                    <option value="all">همه‌ی نمرات</option>
+                    ${periodOptions}
+                </select>` : ""}
+                <button class="secondary-btn" onclick="printReportCard()">🖨️ چاپ / خروجی PDF</button>
+            </div>
         </div>
         ${childSelectorHtml(children)}
         <div class="stats" style="grid-template-columns:repeat(1,1fr);max-width:260px">
@@ -237,6 +248,9 @@ async function renderGrades() {
             </div>
         `).join("") || `<div class="card"><div class="page-subtitle">نمره‌ای ثبت نشده</div></div>`}
     `;
+    if (document.getElementById("periodSelect") && window.__selectedPeriodId) {
+        document.getElementById("periodSelect").value = window.__selectedPeriodId;
+    }
 }
 
 // Print-to-PDF via the browser's own print dialog -- same approach as the
