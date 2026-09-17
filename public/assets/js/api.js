@@ -33,6 +33,62 @@ function clearSession() {
 }
 
 /**
+ * Multi-account switcher storage (see account-switcher.js for the UI).
+ * Unlike the per-tab sessionStorage session above, this list lives in
+ * localStorage on purpose: it's the "saved logins" shelf that must survive
+ * across tabs and browser restarts so switching between e.g. an admin
+ * account and a teacher account never needs the password typed again,
+ * the same way Instagram/WhatsApp account-switching works. Only the raw
+ * session tokens live here (same tokens the server already issues and can
+ * revoke/expire normally) -- no passwords are ever stored.
+ */
+const ACCOUNTS_KEY = "madrese_accounts_v1";
+
+function getAccounts() {
+    try {
+        const raw = localStorage.getItem(ACCOUNTS_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveAccounts(list) {
+    try { localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(list)); } catch { /* storage full/disabled -- switcher just won't persist */ }
+}
+
+function accountKey(user) {
+    return `${user.school_id}:${user.id}`;
+}
+
+/** Upserts a logged-in session into the saved-accounts list, keyed by school_id+user_id so logging into the same account again just refreshes it in place. */
+function upsertAccount(session) {
+    if (!session || !session.token || !session.user) return;
+    const key = accountKey(session.user);
+    const list = getAccounts().filter(a => a.key !== key);
+    list.push({
+        key,
+        token: session.token,
+        expires_at: session.expires_at,
+        user: session.user,
+        roles: session.roles,
+        saved_at: new Date().toISOString(),
+    });
+    saveAccounts(list);
+}
+
+function removeAccountByKey(key) {
+    saveAccounts(getAccounts().filter(a => a.key !== key));
+}
+
+/** Used when a session turns out to be dead (401) so the switcher stops offering it. */
+function removeAccountByToken(token) {
+    if (!token) return;
+    saveAccounts(getAccounts().filter(a => a.token !== token));
+}
+
+/**
  * Redirects to login.html if there's no session. Call at the top of every
  * protected page. Returns the session so callers can use it immediately.
  */
@@ -77,6 +133,7 @@ async function apiFetch(path, opts = {}) {
 
     if (res.status === 401) {
         const loginPath = loginPathFor(session);
+        if (session?.token && path !== "/api/auth/login") removeAccountByToken(session.token);
         clearSession();
         window.location.href = loginPath;
         // Throw so callers' .then chains stop here too (redirect is async).
@@ -108,18 +165,22 @@ async function login(schoolId, username, password, twoFactorCode = null) {
         body: { school_id: Number(schoolId), username, password, ...(twoFactorCode ? { two_factor_code: twoFactorCode } : {}) },
     });
     if (data?.token) {
-        setSession({ token: data.token, expires_at: data.expires_at, user: data.user, roles: data.roles });
+        const session = { token: data.token, expires_at: data.expires_at, user: data.user, roles: data.roles };
+        setSession(session);
+        upsertAccount(session);
     }
     return data;
 }
 
 async function logout() {
-    const loginPath = loginPathFor(getSession());
+    const session = getSession();
+    const loginPath = loginPathFor(session);
     try {
         await apiFetch("/api/auth/logout", { method: "POST" });
     } catch {
         // even if the network call fails, still clear the local session
     }
+    if (session?.user) removeAccountByKey(accountKey(session.user));
     clearSession();
     window.location.href = loginPath;
 }

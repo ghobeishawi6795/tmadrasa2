@@ -92,6 +92,10 @@ function initShell(expectedRole) {
 
     applyBranding(); // fire-and-forget: cosmetic only, never blocks the shell
 
+    // Guarded call: account-switcher.js isn't loaded on every page (e.g. it
+    // has no reason to be on the super-admin login page), so don't assume it exists.
+    if (typeof initAccountSwitcher === "function") initAccountSwitcher(currentSession);
+
     return currentSession;
 }
 
