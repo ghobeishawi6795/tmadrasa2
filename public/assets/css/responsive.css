@@ -88,7 +88,13 @@
         gap:6px;
     }
 
+    /* .profile-name/.profile-role are already hidden by the 800px rule
+       above -- this just tightens the avatar's own spacing at very narrow
+       widths. Do NOT hide .profile itself: the avatar is the account-switcher's
+       tap target (see account-switcher.js), and removing it would also take
+       away the only way to log out on a real phone screen. */
     .profile{
-        display:none;
+        gap:0;
+        margin-right:0;
     }
 }
