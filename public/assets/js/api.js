@@ -4,20 +4,46 @@
 ========================================================= */
 
 const SESSION_KEY = "madrese_session";
+const PERSISTENT_LOGIN_CACHE_KEY = "madrese_persistent_login";
 
 /**
- * Session storage is per-TAB (sessionStorage), not shared across the whole
- * browser (localStorage) -- intentional: it lets you have e.g. the teacher
- * dashboard open in one tab and the student dashboard open in another tab
- * at the same time, each with its own independent login. The trade-off is
- * that each new tab needs its own login (a session doesn't automatically
- * follow you into a freshly opened tab), which is normal/expected.
+ * Whether the active session survives a full browser/app close.
+ * - true  (localStorage) -- default. Log in once, stay logged in on this
+ *   device until you explicitly log out or the 30-day server session
+ *   expires. Superadmin-controlled system-wide (GET/PATCH
+ *   /api/superadmin/settings), user-facing 2026-09-18 per request.
+ * - false (sessionStorage, the old default) -- per-TAB: lets you have e.g.
+ *   the teacher dashboard open in one tab and the student dashboard in
+ *   another, each independently logged in, at the cost of needing to log
+ *   in again in every freshly opened tab.
+ *
+ * The setting itself is fetched from /api/public/settings (no auth needed,
+ * since this decision has to be made before/at login) and cached in
+ * localStorage so page loads don't block on a network round-trip just to
+ * find the right storage to look in.
  */
+function isPersistentLoginCached() {
+    const cached = localStorage.getItem(PERSISTENT_LOGIN_CACHE_KEY);
+    return cached === null ? true : cached === "1"; // default true until first fetch completes
+}
 
-/** Reads the current session ({ token, expires_at, user, roles }) or null. */
+function cachePersistentLoginSetting(enabled) {
+    try { localStorage.setItem(PERSISTENT_LOGIN_CACHE_KEY, enabled ? "1" : "0"); } catch { /* storage full/disabled */ }
+}
+
+/** Refreshes the cached setting from the server. Fire-and-forget; call at app start and before login. */
+async function refreshPersistentLoginSetting() {
+    try {
+        const res = await fetch("/api/public/settings");
+        const json = await res.json();
+        if (json?.success) cachePersistentLoginSetting(!!json.data.persistent_login);
+    } catch { /* offline/etc -- keep using the cached value */ }
+}
+
+/** Reads the current session ({ token, expires_at, user, roles }) or null. Checks both storages so a session written under either mode is still found (e.g. right after the setting was flipped). */
 function getSession() {
     try {
-        const raw = sessionStorage.getItem(SESSION_KEY);
+        const raw = localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY);
         return raw ? JSON.parse(raw) : null;
     } catch {
         return null;
@@ -25,10 +51,18 @@ function getSession() {
 }
 
 function setSession(session) {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    const json = JSON.stringify(session);
+    if (isPersistentLoginCached()) {
+        localStorage.setItem(SESSION_KEY, json);
+        sessionStorage.removeItem(SESSION_KEY);
+    } else {
+        sessionStorage.setItem(SESSION_KEY, json);
+        localStorage.removeItem(SESSION_KEY);
+    }
 }
 
 function clearSession() {
+    localStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(SESSION_KEY);
 }
 

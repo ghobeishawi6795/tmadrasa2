@@ -165,6 +165,7 @@ const SYSTEM_SCHOOL_ID = 0;
         window.location.href = "index.html";
     }
 })();
+refreshPersistentLoginSetting(); // fire-and-forget: makes sure the upcoming login() call below uses an up-to-date setting
 
 document.getElementById("loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();

@@ -178,6 +178,7 @@ button{
         window.location.href = roleHome(session.roles);
     }
 })();
+refreshPersistentLoginSetting(); // fire-and-forget: makes sure the upcoming login() call below uses an up-to-date setting
 
 function roleHome(roles) {
     const folders = { admin: "admin", teacher: "teacher", student: "student", parent: "parent", super_admin: "superadmin" };

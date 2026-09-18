@@ -91,6 +91,7 @@ function initShell(expectedRole) {
     document.getElementById("avatar").textContent = name.charAt(0);
 
     applyBranding(); // fire-and-forget: cosmetic only, never blocks the shell
+    refreshPersistentLoginSetting(); // fire-and-forget: updates the cache for the NEXT login/page-load, doesn't move the already-active session between storages
 
     // Guarded call: account-switcher.js isn't loaded on every page (e.g. it
     // has no reason to be on the super-admin login page), so don't assume it exists.
