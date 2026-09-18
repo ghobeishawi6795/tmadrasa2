@@ -215,7 +215,7 @@ async function renderStudents() {
                 <div class="page-title">دانش‌آموزان</div>
                 <div class="page-subtitle">${students.length} دانش‌آموز</div>
             </div>
-            <div style="display:flex;gap:8px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
                 <button class="secondary-btn" onclick="openStudentImportForm()">⬆️ ایمپورت گروهی (CSV)</button>
                 <button class="primary-btn" onclick="openStudentForm()">+ ثبت دانش‌آموز جدید</button>
             </div>
@@ -1060,7 +1060,7 @@ async function renderQuestionReview() {
                     <span class="status">${ADMIN_QUESTION_TYPE_LABELS[p.type] || p.type}</span>
                 </div>
                 <div class="page-subtitle">معلم: ${escapeHtml(p.teacher_name)}${p.chapter ? ` · فصل: ${escapeHtml(p.chapter)}` : ""}${p.difficulty ? ` · سختی: ${escapeHtml(p.difficulty)}` : ""}</div>
-                <div style="display:flex;gap:8px;margin-top:10px">
+                <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
                     <button class="primary-btn" onclick="moderateQuestion(${p.id}, 'approve')">✅ تأیید</button>
                     <button class="secondary-btn" onclick="moderateQuestion(${p.id}, 'reject')">رد</button>
                 </div>
