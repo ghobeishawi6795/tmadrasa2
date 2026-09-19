@@ -40,6 +40,11 @@ export function withErrorHandling(handler) {
             return await handler(context);
         } catch (e) {
             if (e instanceof Response) return e;
+            // DB trigger (migration 042) refuses overlapping active meetings. Without this the
+            // user only ever saw a generic "internal server error" for a normal, expected conflict.
+            if (/meeting time conflicts with another active meeting/.test(String((e && e.message) || ""))) {
+                return errors.conflict("این بازه‌ی زمانی با جلسه‌ی فعال دیگری (برای همین معلم، والد یا دانش‌آموز) تداخل دارد؛ زمان دیگری انتخاب کنید");
+            }
             console.error(e);
             return errors.server();
         }

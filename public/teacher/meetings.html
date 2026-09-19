@@ -1,1 +1,64 @@
-<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>جلسات اولیا | مدرسه</title><link rel="stylesheet" href="../assets/css/core.css"><link rel="stylesheet" href="../assets/css/layout.css"><link rel="stylesheet" href="../assets/css/components.css"><link rel="stylesheet" href="../assets/css/responsive.css"></head><body><div class="app"><div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileNav()"></div><aside class="sidebar" id="sidebar"><div class="logo"><div class="logo-icon">م</div><div><strong>مدرسه</strong><span>جلسات اولیا</span></div></div><nav class="nav"><button onclick="location.href='/teacher/index.html'">← بازگشت</button></nav><div class="role-box"><div class="role-label">محیط فعلی</div><div class="role-name" id="roleName">معلم</div></div></aside><main class="main"><header class="topbar"><div class="top-left"><button class="mobile-menu" onclick="toggleMobileNav()">☰</button></div><div class="top-right"><div class="profile"><div class="avatar" id="avatar">م</div><div><div id="profileName">—</div><div id="profileRole">معلم</div></div></div></div></header><section class="content"><h1>جلسات اولیا</h1><div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>دانش‌آموز</th><th>والد</th><th>زمان</th><th>موضوع</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody id="rows"></tbody></table></div></div></section></main></div><script src="../assets/js/api.js"></script><script src="../assets/js/app.js"></script><script src="../assets/js/account-switcher.js"></script><script src="../assets/js/navigation.js"></script><script>initShell('teacher');async function load(){const r=await api.get('/api/teacher/meetings');document.getElementById('rows').innerHTML=r.map(x=>`<tr><td>${escapeHtml(x.student_name)}</td><td>${escapeHtml(x.parent_name)}</td><td>${escapeHtml(x.scheduled_at)}</td><td>${escapeHtml(x.topic||'—')}</td><td>${escapeHtml(x.status)}</td><td><select onchange="changeStatus(${x.id},this.value)"><option value="requested">درخواست</option><option value="confirmed">تأیید</option><option value="completed">انجام شد</option><option value="cancelled">لغو</option></select></td></tr>`).join('')||'<tr><td colspan="6">جلسه‌ای نیست</td></tr>'}const changeStatus=guarded(_changeStatus);async function _changeStatus(id,status){await api.patch('/api/teacher/meetings',{id,status});toast('بروزرسانی شد');load()}load().catch(e=>toast(e.message,true));</script></body></html>
+<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>جلسات اولیا | مدرسه</title><link rel="stylesheet" href="../assets/css/core.css"><link rel="stylesheet" href="../assets/css/layout.css"><link rel="stylesheet" href="../assets/css/components.css"><link rel="stylesheet" href="../assets/css/responsive.css"></head><body><div class="app"><div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileNav()"></div><aside class="sidebar" id="sidebar"><div class="logo"><div class="logo-icon">م</div><div><strong>مدرسه</strong><span>جلسات اولیا</span></div></div><nav class="nav"><button onclick="location.href='/teacher/index.html'">← بازگشت</button></nav><div class="role-box"><div class="role-label">محیط فعلی</div><div class="role-name" id="roleName">معلم</div></div></aside><main class="main"><header class="topbar"><div class="top-left"><button class="mobile-menu" onclick="toggleMobileNav()">☰</button></div><div class="top-right"><div class="profile"><div class="avatar" id="avatar">م</div><div><div id="profileName">—</div><div id="profileRole">معلم</div></div></div></div></header><section class="content">
+<h1>جلسات اولیا</h1>
+<div class="page-subtitle" style="margin:-4px 0 16px;line-height:1.9">والدین می‌توانند برای شما درخواست جلسه بفرستند؛ شما هم می‌توانید خودتان برای والدین دانش‌آموزان کلاس‌هایتان جلسه تعیین کنید. درخواست‌های جدید را تأیید یا لغو کنید و بعد از برگزاری، «برگزار شد» را بزنید.</div>
+<div class="card" style="padding:18px;margin-bottom:16px">
+<h3 style="margin-bottom:12px">＋ تعیین جلسه‌ی جدید</h3>
+<form id="meetingForm">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">
+<div class="form-group"><label>دانش‌آموز</label><select class="form-input" id="mtStudent" required></select></div>
+<div class="form-group" id="mtParentBox" style="display:none"><label>والد</label><select class="form-input" id="mtParent"></select></div>
+<div class="form-group"><label>زمان جلسه</label><input class="form-input" type="datetime-local" id="mtWhen" required></div>
+<div class="form-group"><label>مدت</label><select class="form-input" id="mtDur"><option value="10">۱۰ دقیقه</option><option value="20" selected>۲۰ دقیقه</option><option value="30">۳۰ دقیقه</option><option value="45">۴۵ دقیقه</option><option value="60">۶۰ دقیقه</option></select></div>
+<div class="form-group"><label>موضوع (اختیاری)</label><input class="form-input" id="mtTopic" maxlength="500"></div>
+</div>
+<div id="mtHint" class="page-subtitle" style="margin-bottom:10px"></div>
+<button class="primary-btn" id="mtSubmit" type="submit">ثبت جلسه و اطلاع به والد</button>
+</form>
+</div>
+<div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>دانش‌آموز</th><th>والد</th><th>زمان</th><th>مدت</th><th>موضوع</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+</section></main></div><script src="../assets/js/api.js"></script><script src="../assets/js/app.js"></script><script src="../assets/js/account-switcher.js"></script><script src="../assets/js/navigation.js"></script><script src="../assets/js/jalali.js"></script><script>initShell('teacher');
+const STATUS={requested:['orange','منتظر پاسخ شما'],confirmed:['green','تأیید شده'],completed:['','برگزار شد'],cancelled:['red','لغو شده']};
+let options=[];
+async function load(){
+ const r=await api.get('/api/teacher/meetings');
+ document.getElementById('rows').innerHTML=r.map(x=>{
+  const st=STATUS[x.status]||['',x.status];
+  let acts='—';
+  if(x.status==='requested')acts=`<button class="primary-btn" style="height:34px;padding:0 12px" onclick="changeStatus(${x.id},'confirmed')">تأیید</button> <button class="secondary-btn" style="height:34px;padding:0 12px" onclick="cancelMeeting(${x.id})">لغو</button>`;
+  else if(x.status==='confirmed')acts=`<button class="primary-btn" style="height:34px;padding:0 12px" onclick="changeStatus(${x.id},'completed')">برگزار شد</button> <button class="secondary-btn" style="height:34px;padding:0 12px" onclick="cancelMeeting(${x.id})">لغو</button>`;
+  return `<tr><td>${escapeHtml(x.student_name)}</td><td>${escapeHtml(x.parent_name)}</td><td>${escapeHtml(formatJalaliDateTime(x.scheduled_at))}</td><td>${escapeHtml(x.duration_minutes)} دقیقه</td><td>${escapeHtml(x.topic||'—')}</td><td><span class="status ${st[0]}">${st[1]}</span></td><td>${acts}</td></tr>`}).join('')||'<tr><td colspan="7">جلسه‌ای نیست</td></tr>';
+}
+async function loadOptions(){
+ options=await api.get('/api/teacher/meeting-options');
+ const sel=document.getElementById('mtStudent');
+ sel.innerHTML=options.length?'<option value="">— انتخاب دانش‌آموز —</option>'+options.map(o=>`<option value="${o.student_id}"${o.parents.length?'':' disabled'}>${escapeHtml(o.student_name)} — ${escapeHtml(o.class_name)}${o.parents.length?'':' (والدی متصل نشده)'}</option>`).join(''):'<option value="">دانش‌آموزی در کلاس‌های شما نیست</option>';
+ document.getElementById('mtSubmit').disabled=!options.length;
+}
+function onStudentChange(){
+ const o=options.find(x=>String(x.student_id)===document.getElementById('mtStudent').value);
+ const box=document.getElementById('mtParentBox'),psel=document.getElementById('mtParent'),hint=document.getElementById('mtHint');
+ if(!o){box.style.display='none';hint.textContent='';return}
+ psel.innerHTML=o.parents.map(p=>`<option value="${p.parent_id}">${escapeHtml(p.parent_name)}</option>`).join('');
+ box.style.display=o.parents.length>1?'block':'none';
+ hint.textContent=o.parents.length===1?'جلسه با «'+o.parents[0].parent_name+'» تعیین می‌شود.':'';
+}
+const changeStatus=guarded(_changeStatus);
+async function _changeStatus(id,status){await api.patch('/api/teacher/meetings',{id,status});toast('وضعیت جلسه بروزرسانی شد');await load()}
+const cancelMeeting=guarded(_cancelMeeting);
+async function _cancelMeeting(id){if(!(await confirmModal('این جلسه لغو شود؟ به والد اطلاع داده می‌شود.',{danger:true,okLabel:'لغو جلسه',cancelLabel:'انصراف'})))return;await _changeStatus(id,'cancelled')}
+document.getElementById('mtStudent').addEventListener('change',onStudentChange);
+(function(){const n=new Date(),p=v=>String(v).padStart(2,'0');document.getElementById('mtWhen').min=n.getFullYear()+'-'+p(n.getMonth()+1)+'-'+p(n.getDate())+'T'+p(n.getHours())+':'+p(n.getMinutes())})();
+document.getElementById('meetingForm').addEventListener('submit',guarded(async e=>{
+ e.preventDefault();
+ const btn=document.getElementById('mtSubmit');btn.disabled=true;
+ try{
+  const body={student_id:Number(document.getElementById('mtStudent').value),scheduled_at:document.getElementById('mtWhen').value,duration_minutes:Number(document.getElementById('mtDur').value),topic:document.getElementById('mtTopic').value.trim()||undefined};
+  const pbox=document.getElementById('mtParentBox');if(pbox.style.display!=='none')body.parent_id=Number(document.getElementById('mtParent').value);
+  await api.post('/api/teacher/meetings',body);
+  toast('جلسه ثبت شد و به والد اطلاع داده شد');
+  e.target.reset();onStudentChange();await load();
+ }finally{btn.disabled=false}
+}));
+load().catch(e=>toast(e.message,true));
+loadOptions().catch(e=>toast(e.message,true));
+</script></body></html>

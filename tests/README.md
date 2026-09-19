@@ -69,3 +69,7 @@ BASE_URL=http://127.0.0.1:8788 node tests/security-idor.mjs
   طریق داشبورد/API نمی‌تونه معلم جدید اضافه کنه یا والدی رو به فرزندش وصل کنه.
   این خارج از محدوده امنیتیِ قدم ۱۱ هست، ولی برای Production واقعی لازمه — اگه
   بخوای می‌تونیم به‌عنوان یک قدم جداگانه (یا زیرمجموعه‌ی ۱۱-ج) اضافه‌ش کنیم.
+
+## page-smoke.cjs
+`node tests/page-smoke.cjs public` — runs every page's scripts against a stub DOM and fails on top-level runtime errors
+(added v78 after a scope bug that `node --check` could not see blanked `admin/operations.html`). No network/dev-dependencies needed.
