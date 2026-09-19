@@ -890,7 +890,7 @@ async function saveAnswer(attemptId, questionId, type, btn) {
 }
 
 async function submitExam(attemptId, examId) {
-    if (!confirm("بعد از ارسال نهایی دیگر نمی‌توانید پاسخ‌ها را تغییر دهید. مطمئنید؟")) return;
+    if (!(await confirmModal("بعد از ارسال نهایی دیگر نمی‌توانید پاسخ‌ها را تغییر دهید. مطمئنید؟", {okLabel:"ارسال نهایی"}))) return;
     if (__examTimerInterval) clearInterval(__examTimerInterval);
     await withToast(() => api.post("/api/student/exam-attempt", { action: "submit", attempt_id: attemptId }), "آزمون ارسال شد");
     closeModal();
@@ -1130,7 +1130,8 @@ function practiceQuestionInput(q) {
     return `<textarea class="form-input" name="pq_${q.id}" rows="3" style="height:auto;padding:10px 12px"></textarea>`;
 }
 
-async function submitPracticeAnswer(questionId, type) {
+const submitPracticeAnswer = guarded(_submitPracticeAnswer);
+async function _submitPracticeAnswer(questionId, type) {
     const card = document.getElementById(`practiceCard_${questionId}`);
     const body = { question_id: questionId };
     if (type === "multiple_choice") {
@@ -1275,7 +1276,8 @@ function quickPracticeMessageHandler(event) {
     if (btn) btn.disabled = false;
 }
 
-async function submitQuickPracticeAnswer() {
+const submitQuickPracticeAnswer = guarded(_submitQuickPracticeAnswer);
+async function _submitQuickPracticeAnswer() {
     const state = __quickPractice;
     const q = state.questions[state.idx];
     const body = { question_id: q.id };

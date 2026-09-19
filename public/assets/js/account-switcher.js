@@ -42,7 +42,7 @@ function injectSwitcherStyles() {
         .acc-row-name{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .acc-row-role{font-size:10.5px;color:var(--muted)}
         .acc-row-check{color:var(--primary);font-size:14px}
-        .acc-row-remove{border:0;background:transparent;color:var(--muted);font-size:15px;padding:4px;border-radius:6px;line-height:1}
+        .acc-row-remove{border:0;background:transparent;color:var(--muted);font-size:15px;padding:10px 12px;margin:-6px -6px -6px 0;border-radius:8px;line-height:1;min-width:40px;min-height:40px}
         .acc-row-remove:hover{background:var(--red-soft,#ffeded);color:var(--red,#ef5350)}
         .acc-dropdown-sep{border-top:1px solid var(--line);margin:4px 0}
         .acc-dropdown-action{display:flex;align-items:center;gap:8px;padding:12px 16px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--text)}
@@ -215,8 +215,10 @@ function renderAccountDropdown() {
         });
     });
     __dropdownEl.querySelectorAll(".acc-row-remove").forEach(btn => {
-        btn.addEventListener("click", (e) => {
+        btn.addEventListener("click", async (e) => {
             e.stopPropagation();
+            // removing = server-side logout of that account; a stray tap on a phone shouldn't do that silently
+            if (typeof confirmModal === "function" && !(await confirmModal("از این حساب روی این دستگاه خارج می‌شوید؟ برای ورود دوباره به رمز عبور نیاز دارید.", { danger: true, okLabel: "خروج از حساب" }))) return;
             removeSwitcherAccount(btn.dataset.removeKey);
         });
     });

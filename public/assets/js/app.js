@@ -181,6 +181,57 @@ function toast(message, isError = false) {
     box.__timer = setTimeout(() => { box.style.opacity = "0"; }, 3000);
 }
 
+/**
+ * confirmModal -- styled replacement for the browser's native confirm() (which shows
+ * the raw page URL in an OS dialog). Returns Promise<boolean>. Self-contained: builds
+ * its own overlay, so it works on every page (even ones without the shared #modalOverlay)
+ * and never disturbs a form that is already open in the main modal underneath.
+ * Message is set via textContent, so callers can pass any string safely.
+ */
+let __confirmResolve = null;
+function confirmModal(message, { title = "تأیید عملیات", okLabel = "تأیید", cancelLabel = "لغو", danger = false } = {}) {
+    if (__confirmResolve) { const r = __confirmResolve; __confirmResolve = null; r(false); }
+    document.getElementById("__confirmOverlay")?.remove();
+    return new Promise((resolve) => {
+        const overlay = document.createElement("div");
+        overlay.id = "__confirmOverlay";
+        overlay.className = "modal-overlay show";
+        overlay.style.zIndex = "450";
+        overlay.innerHTML = `
+            <div class="modal" role="dialog" aria-modal="true" style="max-width:420px">
+                <div class="modal-head"><div class="modal-title"></div></div>
+                <div class="page-subtitle" style="font-size:14px;line-height:1.9;color:var(--text,inherit)"></div>
+                <div class="modal-footer">
+                    <button type="button" class="primary-btn" data-act="ok"></button>
+                    <button type="button" class="secondary-btn" data-act="cancel"></button>
+                </div>
+            </div>`;
+        overlay.querySelector(".modal-title").textContent = title;
+        overlay.querySelector(".page-subtitle").textContent = message;
+        const okBtn = overlay.querySelector('[data-act="ok"]');
+        const cancelBtn = overlay.querySelector('[data-act="cancel"]');
+        okBtn.textContent = okLabel;
+        cancelBtn.textContent = cancelLabel;
+        if (danger) okBtn.style.background = "#ef5350";
+        const finish = (value) => {
+            if (__confirmResolve !== resolve) return;
+            __confirmResolve = null;
+            document.removeEventListener("keydown", onKey, true);
+            overlay.remove();
+            resolve(value);
+        };
+        const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); finish(false); } };
+        document.addEventListener("keydown", onKey, true);
+        okBtn.addEventListener("click", () => finish(true));
+        cancelBtn.addEventListener("click", () => finish(false));
+        overlay.addEventListener("click", (e) => { if (e.target === overlay) finish(false); });
+        __confirmResolve = resolve;
+        document.body.appendChild(overlay);
+        // destructive actions: focus the safe button so a stray Enter can't delete anything
+        (danger ? cancelBtn : okBtn).focus();
+    });
+}
+
 /** Wraps an async action (e.g. a form submit) with a try/catch that toasts errors. */
 async function withToast(fn, successMessage) {
     try {
@@ -191,4 +242,19 @@ async function withToast(fn, successMessage) {
         toast(e.message || "خطایی رخ داد", true);
         throw e;
     }
+}
+
+/**
+ * guarded(fn) -- wraps an event handler so a failed API call shows an error toast instead
+ * of failing silently (an unhandled promise rejection is invisible to the user).
+ * Unlike withToast it does not rethrow, so it is safe to use directly as onclick/onsubmit.
+ */
+function guarded(fn) {
+    return async function (...args) {
+        try {
+            return await fn.apply(this, args);
+        } catch (e) {
+            toast((e && e.message) || "خطایی رخ داد", true);
+        }
+    };
 }

@@ -98,3 +98,14 @@
         margin-right:0;
     }
 }
+
+/* iOS Safari zooms the whole page when a focused field's font-size is under 16px
+   (and doesn't zoom back out), which wrecks every form on an iPhone. Force 16px
+   on touch-size screens; !important because several fields carry inline font sizes. */
+@media(max-width:800px){
+    input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),
+    select,
+    textarea{
+        font-size:16px !important;
+    }
+}

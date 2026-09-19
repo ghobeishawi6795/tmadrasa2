@@ -229,7 +229,8 @@ async function renderSubscriptions(){const rows=await api.get("/api/superadmin/s
 // on every single load, and shifting it AGAIN each time it got re-saved.
 // Just slicing the raw stored string avoids any conversion, so what you
 // see is exactly what was typed.
-async function saveSub(id){await api.patch('/api/superadmin/subscriptions',{school_id:id,plan:document.getElementById('plan_'+id).value,status:document.getElementById('status_'+id).value,expires_at:document.getElementById('exp_'+id).value||null,trial_ends_at:document.getElementById('trial_'+id).value||null});toast('اشتراک ذخیره شد')}
+const saveSub = guarded(_saveSub);
+async function _saveSub(id){await api.patch('/api/superadmin/subscriptions',{school_id:id,plan:document.getElementById('plan_'+id).value,status:document.getElementById('status_'+id).value,expires_at:document.getElementById('exp_'+id).value||null,trial_ends_at:document.getElementById('trial_'+id).value||null});toast('اشتراک ذخیره شد')}
 
 /* =========================================================
    MESSAGES

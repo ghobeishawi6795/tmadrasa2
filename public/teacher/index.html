@@ -449,7 +449,7 @@ function collectInteractivePayload(type) {
 }
 
 async function deleteAssignment(id) {
-    if (!confirm("از حذف این تکلیف مطمئن هستید؟")) return;
+    if (!(await confirmModal("از حذف این تکلیف مطمئن هستید؟", {danger:true, okLabel:"حذف"}))) return;
     await withToast(() => api.del("/api/teacher/assignments", { id }), "تکلیف حذف شد");
     renderAssignments();
 }
@@ -714,7 +714,7 @@ async function loadChapterOptionsFor(selectId, subjectId) {
 }
 
 async function publishExam(id) {
-    if (!confirm("بعد از انتشار، فقط بستن آزمون ممکن است. مطمئنید؟")) return;
+    if (!(await confirmModal("بعد از انتشار، فقط بستن آزمون ممکن است. مطمئنید؟", {okLabel:"انتشار"}))) return;
     await withToast(() => api.put("/api/teacher/exams", { id, action: "publish" }), "آزمون منتشر شد");
     renderExams();
 }
@@ -723,7 +723,7 @@ async function closeExam(id) {
     renderExams();
 }
 async function deleteExam(id) {
-    if (!confirm("از حذف این آزمون مطمئن هستید؟")) return;
+    if (!(await confirmModal("از حذف این آزمون مطمئن هستید؟", {danger:true, okLabel:"حذف"}))) return;
     await withToast(() => api.del("/api/teacher/exams", { id }), "آزمون حذف شد");
     renderExams();
 }
@@ -783,7 +783,7 @@ async function openExamQuestions(examId) {
                 });
                 addedCount++;
             } catch (err) {
-                toast(`یک سؤال اضافه نشد: ${err.message || "خطا"}`);
+                toast(`یک سؤال اضافه نشد: ${err.message || "خطا"}`, true);
             }
         }
         toast(`${addedCount} سؤال اضافه شد`);
@@ -994,7 +994,7 @@ async function openSendSelectedToExam() {
                 await api.post("/api/teacher/exam-questions", { exam_id: examId, question_id: id, score, position: nextPosition++ });
                 addedCount++;
             } catch (err) {
-                toast(`یک سؤال اضافه نشد: ${err.message || "خطا"}`);
+                toast(`یک سؤال اضافه نشد: ${err.message || "خطا"}`, true);
             }
         }
         closeModal();
@@ -1005,7 +1005,8 @@ async function openSendSelectedToExam() {
     });
 }
 
-async function toggleQuestionFavorite(id) {
+const toggleQuestionFavorite = guarded(_toggleQuestionFavorite);
+async function _toggleQuestionFavorite(id) {
     await api.post("/api/teacher/toggle-question-favorite", { id });
     cache.questions = null;
     renderQuestions();
@@ -1016,7 +1017,7 @@ async function toggleQuestionFavorite(id) {
 async function toggleQuestionPractice(id) {
     const question = cache.questions.find(x => x.id === id);
     if (question && !question.is_practice && !question.subject_id) {
-        if (!confirm("این سؤال درس مشخصی نداره، پس توی «تمرین» دانش‌آموز دیده نمی‌شه مگر یک درس براش انتخاب کنی. ادامه بدم؟")) return;
+        if (!(await confirmModal("این سؤال درس مشخصی نداره، پس توی «تمرین» دانش‌آموز دیده نمی‌شه مگر یک درس براش انتخاب کنی. ادامه بدم؟", {okLabel:"ادامه"}))) return;
     }
     await withToast(() => api.post("/api/teacher/toggle-question-practice", { id }), "به‌روزرسانی شد");
     cache.questions = null;
@@ -1076,7 +1077,7 @@ async function openChapterForm(chapter) {
 }
 
 async function deleteChapter(id) {
-    if (!confirm("این فصل حذف بشه؟ سؤال‌هایی که قبلاً با این فصل ثبت شده‌اند دست‌نخورده می‌مانند.")) return;
+    if (!(await confirmModal("این فصل حذف بشه؟ سؤال‌هایی که قبلاً با این فصل ثبت شده‌اند دست‌نخورده می‌مانند.", {danger:true, okLabel:"حذف"}))) return;
     await withToast(() => api.del("/api/teacher/chapters", { id }), "فصل حذف شد");
     if (cache.questionFilters?.chapter) cache.questionFilters.chapter = null;
     renderQuestions();
@@ -1183,7 +1184,8 @@ async function openQuestionSkills(id) {
     `);
 }
 
-async function toggleQuestionSkill(questionId, skillId, checked) {
+const toggleQuestionSkill = guarded(_toggleQuestionSkill);
+async function _toggleQuestionSkill(questionId, skillId, checked) {
     if (checked) await api.post("/api/teacher/question-skills", { question_id: questionId, skill_id: skillId });
     else await api.del("/api/teacher/question-skills", { question_id: questionId, skill_id: skillId });
 }

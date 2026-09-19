@@ -407,7 +407,7 @@ function openClassForm() {
 }
 
 async function deleteClass(id) {
-    if (!confirm("از حذف این کلاس مطمئن هستید؟")) return;
+    if (!(await confirmModal("از حذف این کلاس مطمئن هستید؟", {danger:true, okLabel:"حذف"}))) return;
     await withToast(() => api.del("/api/admin/classes", { id }), "کلاس حذف شد");
     renderClasses();
 }
@@ -551,14 +551,14 @@ function openSubjectForm() {
 
 async function renameSubject(id) {
     const subject = cache.subjects.find(s => s.id === id);
-    const name = prompt("نام جدید درس:", subject ? subject.name : "");
+    const name = await promptModal("ویرایش نام درس", "نام جدید درس:", subject ? subject.name : "");
     if (!name || !name.trim() || (subject && name.trim() === subject.name)) return;
     await withToast(() => api.put("/api/admin/subjects", { id, name: name.trim() }), "نام درس بروزرسانی شد");
     renderSubjects();
 }
 
 async function deleteSubject(id) {
-    if (!confirm("از حذف این درس مطمئن هستید؟")) return;
+    if (!(await confirmModal("از حذف این درس مطمئن هستید؟", {danger:true, okLabel:"حذف"}))) return;
     await withToast(() => api.del("/api/admin/subjects", { id }), "درس حذف شد");
     renderSubjects();
 }
@@ -727,7 +727,7 @@ async function openScheduleForm(classId) {
 }
 
 async function deleteScheduleEntry(id, classId) {
-    if (!confirm("از حذف این جلسه مطمئن هستید؟")) return;
+    if (!(await confirmModal("از حذف این جلسه مطمئن هستید؟", {danger:true, okLabel:"حذف"}))) return;
     await withToast(() => api.del("/api/admin/schedules", { id }), "جلسه حذف شد");
     loadSchedule(classId);
 }
@@ -842,7 +842,7 @@ async function addHoliday() {
 }
 
 async function deleteHoliday(id) {
-    if (!confirm("از حذف این تعطیلی مطمئن هستید؟")) return;
+    if (!(await confirmModal("از حذف این تعطیلی مطمئن هستید؟", {danger:true, okLabel:"حذف"}))) return;
     await withToast(() => api.del("/api/admin/holidays", { id }), "تعطیلی حذف شد");
     renderSettings();
 }

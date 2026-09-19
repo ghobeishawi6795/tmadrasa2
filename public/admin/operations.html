@@ -22,22 +22,23 @@ async function load(){
  <div class="card"><h3>📚 کتابخانه</h3><div class="stat-card"><div class="stat-value">${lib.books.length}</div><div class="stat-label">عنوان کتاب</div></div><p class="mini">امانت فعال: ${lib.loans.filter(x=>x.status==='borrowed').length}</p><form id="bookForm"><input class="form-input" name="title" placeholder="عنوان کتاب" required style="margin-top:8px"><input class="form-input" name="author" placeholder="نویسنده" style="margin-top:8px"><input class="form-input" name="total_copies" type="number" min="1" value="1" style="margin-top:8px"><button class="primary-btn" style="margin-top:8px">افزودن کتاب</button></form><div class="table-wrap" style="margin-top:10px">${lib.books.map(x=>`<div style="padding:7px;border-bottom:1px solid var(--line)">${esc(x.title)} — ${x.available_copies}/${x.total_copies}</div>`).join('')}</div><form id="loanForm" style="margin-top:10px"><select class="form-input" name="book_id" required>${lib.books.filter(b=>b.available_copies>0).map(b=>`<option value="${b.id}">${esc(b.title)} (${b.available_copies} موجود)</option>`).join('')||'<option value="">کتاب موجودی ندارد</option>'}</select><select class="form-input" name="student_id" required style="margin-top:8px">${students.map(x=>`<option value="${x.id}">${esc(x.full_name)}</option>`).join('')}</select><input class="form-input" name="due_at" type="date" style="margin-top:8px"><button class="secondary-btn" style="margin-top:8px">امانت دادن</button></form><div class="table-wrap" style="margin-top:10px">${lib.loans.filter(x=>x.status==='borrowed').map(x=>`<div style="padding:7px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px"><span>${esc(x.book_title)} — ${esc(x.student_name)}</span><button class="secondary-btn" onclick="returnLoan(${x.id})">برگشت</button></div>`).join('')||'<p class="mini">امانت فعالی نیست</p>'}</div></div>
  <div class="card full"><h3>👤 حساب کاربری من</h3><div id="accountPanel"></div></div>`;
  mountAccountPanel('accountPanel');
- $('loanForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);await api.post('/api/admin/library',{action:'loan',...Object.fromEntries(f)});toast('کتاب امانت داده شد');load()};
- $('yearForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);await api.post('/api/admin/academic-years',{name:f.get('name'),start_date:f.get('start_date'),end_date:f.get('end_date'),is_current:f.has('current')});load()};
+function safe(fn){return async function(...a){try{return await fn.apply(this,a)}catch(e){toast(e.message||'خطایی رخ داد',true)}}}
+ $('loanForm').onsubmit=safe(async e=>{e.preventDefault();const f=new FormData(e.target);await api.post('/api/admin/library',{action:'loan',...Object.fromEntries(f)});toast('کتاب امانت داده شد');load()});
+ $('yearForm').onsubmit=safe(async e=>{e.preventDefault();const f=new FormData(e.target);await api.post('/api/admin/academic-years',{name:f.get('name'),start_date:f.get('start_date'),end_date:f.get('end_date'),is_current:f.has('current')});load()});
  $('periodForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);try{await api.post('/api/admin/grade-periods',Object.fromEntries(f));toast('دوره ساخته شد');load()}catch(e){toast(e.message,true)}};
- $('profileForm').onsubmit=async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));Object.keys(b).forEach(k=>{if(!b[k])delete b[k]});await api.patch('/api/admin/student-profile',b);toast('پرونده ذخیره شد')};
- $('discForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);await api.post('/api/admin/discipline',Object.fromEntries(f));toast('ثبت شد');e.target.reset()};
- $('examForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);await api.post('/api/admin/exam-schedule',Object.fromEntries(f));toast('برنامه ذخیره شد')};
- $('bookForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);await api.post('/api/admin/library',{action:'book',...Object.fromEntries(f)});toast('کتاب اضافه شد');load()};
- $('feeForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);await api.post('/api/admin/finance',{action:'fee',...Object.fromEntries(f)});toast('ردیف شهریه ساخته شد');load()};
- $('assignFee').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);await api.post('/api/admin/finance',{action:'assign',...Object.fromEntries(f)});toast('شهریه اختصاص یافت')};
+ $('profileForm').onsubmit=safe(async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));Object.keys(b).forEach(k=>{if(!b[k])delete b[k]});await api.patch('/api/admin/student-profile',b);toast('پرونده ذخیره شد')});
+ $('discForm').onsubmit=safe(async e=>{e.preventDefault();const f=new FormData(e.target);await api.post('/api/admin/discipline',Object.fromEntries(f));toast('ثبت شد');e.target.reset()});
+ $('examForm').onsubmit=safe(async e=>{e.preventDefault();const f=new FormData(e.target);await api.post('/api/admin/exam-schedule',Object.fromEntries(f));toast('برنامه ذخیره شد')});
+ $('bookForm').onsubmit=safe(async e=>{e.preventDefault();const f=new FormData(e.target);await api.post('/api/admin/library',{action:'book',...Object.fromEntries(f)});toast('کتاب اضافه شد');load()});
+ $('feeForm').onsubmit=safe(async e=>{e.preventDefault();const f=new FormData(e.target);await api.post('/api/admin/finance',{action:'fee',...Object.fromEntries(f)});toast('ردیف شهریه ساخته شد');load()});
+ $('assignFee').onsubmit=safe(async e=>{e.preventDefault();const f=new FormData(e.target);await api.post('/api/admin/finance',{action:'assign',...Object.fromEntries(f)});toast('شهریه اختصاص یافت')});
 }
-async function requestStatus(id,status){await api.patch('/api/admin/parent-requests',{id,status});toast('وضعیت بروزرسانی شد')}
-async function meetingStatus(id,status){await api.patch('/api/admin/meetings',{id,status});toast('جلسه بروزرسانی شد')}
+async function _requestStatus(id,status){await api.patch('/api/admin/parent-requests',{id,status});toast('وضعیت بروزرسانی شد')}
+async function _meetingStatus(id,status){await api.patch('/api/admin/meetings',{id,status});toast('جلسه بروزرسانی شد')}
 async function returnLoan(id){try{await api.post('/api/admin/library',{action:'return',loan_id:id});toast('کتاب برگشت داده شد');load()}catch(e){toast(e.message,true)}}
-async function deletePeriod(id){if(!confirm('این دوره حذف شود؟ نمرات ثبت‌شده در آن، بدون دوره باقی می‌مانند.'))return;try{await api.del('/api/admin/grade-periods',{id});toast('دوره حذف شد');load()}catch(e){toast(e.message,true)}}
+async function deletePeriod(id){if(!(await confirmModal('این دوره حذف شود؟ نمرات ثبت‌شده در آن، بدون دوره باقی می‌مانند.',{danger:true,okLabel:'حذف'})))return;try{await api.del('/api/admin/grade-periods',{id});toast('دوره حذف شد');load()}catch(e){toast(e.message,true)}}
 let promotePreviewCache=null;
-async function promoteCurrent(){
+async function _promoteCurrent(){
  const years=await api.get('/api/admin/academic-years');
  if(years.length<2){$('promoteMsg').textContent='ابتدا سال جدید را بسازید.';return}
  const current=years.find(x=>x.is_current);
@@ -79,5 +80,6 @@ async function runPromote(toYearId,mapping){
    $('promoteMsg').textContent=`${r.promoted} دانش‌آموز ارتقا یافت؛ ${r.skipped} مورد از قبل ثبت‌شده بود.`;
  }catch(e){$('promoteMsg').textContent=e.message}
 }
+const requestStatus=safe(_requestStatus),meetingStatus=safe(_meetingStatus),promoteCurrent=safe(_promoteCurrent);
 load().catch(e=>toast(e.message,true));
 </script></body></html>

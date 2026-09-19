@@ -123,6 +123,28 @@ function removeAccountByToken(token) {
 }
 
 /**
+ * Cross-tab identity sync. With persistent login (localStorage) the ACTIVE session is
+ * shared by every open tab of the site. Without this, switching account (or logging out)
+ * in one tab leaves the other tabs painted for the OLD account while every request they
+ * make silently authenticates as the NEW one -- i.e. the user could send a message, publish
+ * an exam, etc. as a different account than the one on screen. When another tab changes
+ * the active session to a different account (or clears it), reload this tab so its UI and
+ * its identity agree again (page guards then route to the right dashboard / login).
+ * Pages with no bound account (login pages) are left alone.
+ */
+const __pageAccountKey = (() => {
+    const s = getSession();
+    return s && s.user ? accountKey(s.user) : null;
+})();
+window.addEventListener("storage", (e) => {
+    if (e.storageArea !== localStorage) return;
+    if (e.key !== null && e.key !== SESSION_KEY) return; // key === null means localStorage.clear()
+    if (__pageAccountKey === null) return;
+    const s = getSession();
+    if (!s || !s.user || accountKey(s.user) !== __pageAccountKey) window.location.reload();
+});
+
+/**
  * Redirects to login.html if there's no session. Call at the top of every
  * protected page. Returns the session so callers can use it immediately.
  */
