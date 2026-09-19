@@ -25,10 +25,10 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     const body = await readJson(request);
     requireFields(body, ["holiday_date", "title"]);
 
-    if (!DATE_RE.test(body.holiday_date)) {
+    if (typeof body.holiday_date !== "string" || !DATE_RE.test(body.holiday_date)) {
         throw errors.validation("تاریخ باید به فرمت YYYY-MM-DD باشد");
     }
-    if (!body.title.trim()) throw errors.validation("عنوان تعطیلی الزامی است");
+    if (typeof body.title !== "string" || !body.title.trim()) throw errors.validation("عنوان تعطیلی الزامی است");
     requireMaxLength(body.title, 200, "عنوان تعطیلی");
 
     const db = q(env);

@@ -106,8 +106,10 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
             throw errors.validation("records نباید خالی باشد");
         }
 
+        if (body.records.length > 300) throw errors.validation("تعداد رکوردها بیش از حد مجاز است");
         const statements = [];
         for (const rec of body.records) {
+            if (!rec || typeof rec !== "object") throw errors.validation("رکورد حضور و غیاب نامعتبر است");
             if (!VALID_STATUSES.includes(rec.status)) {
                 throw errors.validation(`وضعیت «${rec.status}» نامعتبر است`);
             }

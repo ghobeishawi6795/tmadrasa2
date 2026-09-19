@@ -116,7 +116,7 @@ async function applyBranding() {
         if (branding.logo_data) {
             document.querySelectorAll(".logo-icon").forEach(el => {
                 el.style.background = "none";
-                el.innerHTML = `<img src="${branding.logo_data}" alt="" style="width:100%;height:100%;object-fit:contain;border-radius:inherit">`;
+                el.innerHTML = `<img src="${escapeHtml(branding.logo_data)}" alt="" style="width:100%;height:100%;object-fit:contain;border-radius:inherit">`;
             });
         }
         if (branding.name) {

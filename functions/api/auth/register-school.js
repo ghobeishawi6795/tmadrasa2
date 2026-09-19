@@ -17,8 +17,8 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     if (typeof body.school_name !== "string" || body.school_name.trim().length < 2 || body.school_name.length > 200) throw errors.validation("نام مدرسه نامعتبر است");
     if (typeof body.username !== "string" || body.username.length < 3 || body.username.length > 100) throw errors.validation("نام کاربری نامعتبر است");
     if (!/^[A-Za-z0-9_.-]{3,100}$/.test(body.username)) throw errors.validation("نام کاربری فقط شامل حروف انگلیسی، عدد، نقطه، خط تیره و زیرخط باشد");
-    if (body.school_phone !== undefined && String(body.school_phone).length > 50) throw errors.validation("شماره تلفن نامعتبر است");
-    if (body.school_address !== undefined && String(body.school_address).length > 1000) throw errors.validation("آدرس بیش از حد طولانی است");
+    if (body.school_phone !== undefined && body.school_phone !== null && (typeof body.school_phone !== "string" || body.school_phone.length > 50)) throw errors.validation("شماره تلفن نامعتبر است");
+    if (body.school_address !== undefined && body.school_address !== null && (typeof body.school_address !== "string" || body.school_address.length > 1000)) throw errors.validation("آدرس بیش از حد طولانی است");
 
     const db = q(env);
     const ip = request.headers.get("CF-Connecting-IP") || "unknown";

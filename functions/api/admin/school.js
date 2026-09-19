@@ -10,6 +10,11 @@ import { writeAudit } from "../_shared/audit.js";
 // since a nav-bar logo doesn't need to be large.
 const MAX_LOGO_CHARS = 200_000; // ~200KB of base64 (~145KB raw binary)
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+// Strict data-URI shape for the logo. Without this, a value that merely fits the
+// size cap could contain a quote and break out of the <img src="..."> attribute
+// it is rendered into on every page of the school (stored XSS). Same pattern as
+// the submission photo/audio validation (v62).
+const LOGO_DATA_URI_RE = /^data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/]+=*$/;
 
 export const onRequestGet = withErrorHandling(async ({ request, env }) => {
     const { user } = await authenticate(request, env);
@@ -27,19 +32,29 @@ export const onRequestPatch = withErrorHandling(async ({ request, env }) => {
     await requirePermission(env, user, "school.update");
     const body = await readJson(request);
 
+    if (body.name !== undefined && body.name !== null && typeof body.name !== "string") {
+        throw errors.validation("نام مدرسه باید متن باشد");
+    }
+    if (typeof body.name === "string" && body.name.length > 200) {
+        throw errors.validation("نام مدرسه نباید بیشتر از ۲۰۰ نویسه باشد");
+    }
     if (body.primary_color !== undefined && body.primary_color !== null && body.primary_color !== "") {
-        if (!COLOR_RE.test(body.primary_color)) {
+        if (typeof body.primary_color !== "string" || !COLOR_RE.test(body.primary_color)) {
             throw errors.validation("رنگ باید به فرمت هگز باشد، مثل #5b5ce2");
         }
     }
-    if (body.logo_data && body.logo_data.length > MAX_LOGO_CHARS) {
-        throw errors.validation(`حجم لوگو بیش از حد مجاز است (حداکثر ${Math.floor(MAX_LOGO_CHARS / 1000)}KB)`);
+    if (body.logo_data !== undefined && body.logo_data !== null && body.logo_data !== "") {
+        if (typeof body.logo_data !== "string") throw errors.validation("فرمت لوگو نامعتبر است");
+        if (body.logo_data.length > MAX_LOGO_CHARS) {
+            throw errors.validation(`حجم لوگو بیش از حد مجاز است (حداکثر ${Math.floor(MAX_LOGO_CHARS / 1000)}KB)`);
+        }
+        if (!LOGO_DATA_URI_RE.test(body.logo_data)) throw errors.validation("فرمت لوگو نامعتبر است (باید تصویر باشد)");
     }
 
     const db = q(env);
     const fields = [];
     const values = [];
-    if (body.name !== undefined && body.name.trim()) { fields.push("name = ?"); values.push(body.name.trim()); }
+    if (typeof body.name === "string" && body.name.trim()) { fields.push("name = ?"); values.push(body.name.trim()); }
     if (body.primary_color !== undefined) { fields.push("primary_color = ?"); values.push(body.primary_color || null); }
     if (body.logo_data !== undefined) { fields.push("logo_data = ?"); values.push(body.logo_data || null); }
 

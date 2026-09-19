@@ -35,7 +35,7 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
 
     const body = await readJson(request);
     requireFields(body, ["text"]);
-    if (!body.text.trim()) throw errors.validation("متن سؤال الزامی است");
+    if (typeof body.text !== "string" || !body.text.trim()) throw errors.validation("متن سؤال الزامی است");
 
     const targetTokens = tokenize(body.text);
     if (!targetTokens.length) return ok([]);

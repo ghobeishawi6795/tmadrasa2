@@ -758,7 +758,7 @@ async function renderSettings() {
             </div>
             <div class="form-group">
                 <label class="form-label">لوگو (حداکثر ۲۰۰KB)</label><br>
-                ${school.logo_data ? `<img src="${school.logo_data}" style="width:48px;height:48px;object-fit:contain;border:1px solid var(--line);border-radius:8px;margin-bottom:8px">` : ""}
+                ${school.logo_data ? `<img src="${escapeHtml(school.logo_data)}" style="width:48px;height:48px;object-fit:contain;border:1px solid var(--line);border-radius:8px;margin-bottom:8px">` : ""}
                 <input type="file" id="brandLogo" accept="image/*">
             </div>
             <button class="primary-btn" onclick="saveBranding()">ذخیره برندینگ</button>

@@ -68,7 +68,7 @@ function readMetadata(body, current = null) {
 export async function createQuestionRecord(env, { schoolId, teacherId, body }) {
     if (!VALID_TYPES.includes(body.type)) throw errors.validation("نوع سؤال نامعتبر است");
     if (body.type === "custom_html") {
-        if (!body.custom_html || !body.custom_html.trim()) throw errors.validation("محتوای HTML الزامی است");
+        if (typeof body.custom_html !== "string" || !body.custom_html.trim()) throw errors.validation("محتوای HTML الزامی است");
         requireMaxLength(body.custom_html, CUSTOM_HTML_MAX_CHARS, "محتوای HTML");
     }
     // BUGFIX: this used to run AFTER the INSERT below -- a validation failure
@@ -262,7 +262,7 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     // type is fixed at creation time -- editing swaps content, not shape.
     const type = question.type;
     if (type === "custom_html") {
-        if (!body.custom_html || !body.custom_html.trim()) throw errors.validation("محتوای HTML الزامی است");
+        if (typeof body.custom_html !== "string" || !body.custom_html.trim()) throw errors.validation("محتوای HTML الزامی است");
         requireMaxLength(body.custom_html, CUSTOM_HTML_MAX_CHARS, "محتوای HTML");
     }
     // BUGFIX: this used to run AFTER the base UPDATE below -- a validation

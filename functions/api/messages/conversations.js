@@ -34,6 +34,14 @@ export const onRequestPost = withErrorHandling(async ({ request, env }) => {
     if (!["direct", "group"].includes(body.type)) throw errors.validation("نوع گفتگو نامعتبر است");
 
     const memberIds = Array.isArray(body.member_user_ids) ? body.member_user_ids : [];
+    // D1 allows only ~100 bound parameters per statement, and every id must be a real
+    // positive integer -- reject anything else up front with a clean 400 instead of a 500.
+    if (memberIds.length > 90 || memberIds.some(id => !Number.isInteger(id) || id <= 0)) {
+        throw errors.validation("فهرست اعضا نامعتبر است");
+    }
+    if (body.title !== undefined && body.title !== null && (typeof body.title !== "string" || body.title.length > 200)) {
+        throw errors.validation("عنوان گفتگو نامعتبر است (حداکثر ۲۰۰ نویسه)");
+    }
     if (body.type === "direct" && memberIds.length !== 1) {
         throw errors.validation("گفتگوی مستقیم باید دقیقاً یک عضو دیگر داشته باشد");
     }

@@ -82,6 +82,9 @@ export const onRequestPut = withErrorHandling(async ({ request, env }) => {
     if (exam.status !== "draft") throw errors.forbidden("فقط آزمون پیش‌نویس قابل ویرایش سؤال است");
 
     if (!Array.isArray(body.items) || body.items.length === 0) throw errors.validation("items باید یک آرایه غیرخالی باشد");
+    // D1 caps bound parameters per statement (~100): the IN (...) lookup below needs one per item
+    if (body.items.length > 90) throw errors.validation("تعداد سؤال‌ها در یک درخواست بیش از حد مجاز است");
+    if (body.items.some(it => !it || typeof it !== "object")) throw errors.validation("آیتم نامعتبر است");
     const ids = body.items.map(it => Number(it.question_id));
     if (ids.some(id => !Number.isInteger(id) || id <= 0) || new Set(ids).size !== ids.length) {
         throw errors.validation("شناسه سؤال‌ها نامعتبر یا تکراری است");
